@@ -244,6 +244,10 @@ class Simulator:
                 a["ang"] = (a["ang"] + float(g_out[i, 0]) * 0.06 * speed) % (2 * math.pi)
                 a["elev"] = max(0.1, min(math.pi / 2 - 0.1, a["elev"] + float(g_out[i, 1]) * 0.04 * speed))
             a["x"], a["y"], a["z"] = sphere_to_xyz(cfg.HEMI_RADIUS, a["ang"], a["elev"])
+            # 严格限制在上半球，确保z>0
+            if a["z"] <= 0:
+                a["elev"] = max(0.1, abs(a["elev"]))
+                a["x"], a["y"], a["z"] = sphere_to_xyz(cfg.HEMI_RADIUS, a["ang"], a["elev"])
             
             if len(self.balls) < cfg.MAX_BALLS and can_launch and np.random.rand() < 0.35 * speed:
                 speed_val = cfg.SPEED_BALL * (0.8 + np.random.rand() * 0.4)
