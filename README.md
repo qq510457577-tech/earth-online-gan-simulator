@@ -12,6 +12,7 @@
 
 *English Tags:* Hemispherical Dome, GAN Generative Adversarial Network, Multi-Target Saturation Attack, Infrared Countermeasure, Intelligent Defense, Multi-Target Priority Tracking, Software-Hardware Collaborative Simulation
 <img width="1430" height="724" alt="截屏2026-03-27 17 27 51" src="https://github.com/user-attachments/assets/ce10ad1e-8efc-4711-95be-2d81aa8421b9" />
+<img width="1424" height="728" alt="截屏2026-03-27 17 30 53" src="https://github.com/user-attachments/assets/5b2f6470-c15a-496a-8059-7599794f1744" />
 
 ---
 
