@@ -1,7 +1,7 @@
 # 地球 Online GAN 攻防模拟器
 ## Earth Online GAN Offensive and Defensive Simulator
 
-> **正式全称（毕设/正式交付版）**
+
 > 中文：地球 Online—— 半球型穹顶多攻方饱和攻击 GAN 红外对抗模拟器
 > 英文：Earth Online —— Hemispherical Dome Multi-Attacker Saturation Attack GAN Infrared Countermeasure Simulator
 
@@ -11,6 +11,7 @@
 `半球型穹顶` `GAN 生成对抗网络` `多目标饱和攻击` `红外对抗` `智能防御` `多目标优先级追踪` `软硬件协同仿真`
 
 *English Tags:* Hemispherical Dome, GAN Generative Adversarial Network, Multi-Target Saturation Attack, Infrared Countermeasure, Intelligent Defense, Multi-Target Priority Tracking, Software-Hardware Collaborative Simulation
+<img width="1430" height="724" alt="截屏2026-03-27 17 27 51" src="https://github.com/user-attachments/assets/ce10ad1e-8efc-4711-95be-2d81aa8421b9" />
 
 ---
 
@@ -29,12 +30,12 @@ Based on the hemispherical dome as the global space carrier, this project integr
 
 ---
 
-## 硬件原型参考（专利级方案）
+## 硬件原型参考
 本仿真项目是以下真实硬件防御系统的数字孪生验证平台，用于算法预研、参数调试、对抗策略训练：
 
 ### 一种基于红外探测与高能脉冲激光的穹顶空域高速球体防御系统
 #### 技术领域
-本发明涉及空域防御技术领域，具体涉及一种针对近球形轻质目标（如乒乓球、高硬塑料球）的高速拦截与毁伤系统，特别适用于 300 米以内穹顶式全向防御场景。
+本发明涉及空域防御技术领域，具体涉及一种针对近球形轻质目标（如乒乓球、高硬塑料球）的高速拦截与毁伤系统，特别适用于 1000 米以内穹顶式全向防御场景。
 
 #### 背景技术（现有问题）
 目前针对低空慢速下落球体的拦截，多采用机械弹射（弹簧、摩擦轮）或实弹射击方式：
@@ -51,12 +52,12 @@ Based on the hemispherical dome as the global space carrier, this project integr
 ##### 关键部件与参数（硬性指标）
 1. **红外探测子系统（眼睛）**
    - 体制：主动红外点阵照明 + 高速红外相机阵列。
-   - 型号建议：Basler acA2040-180km (NIR 版本) 或 国产同等级全局快门相机。
+   - 型号建议：Basler acA2040-180km (NIR 版本) 或 同等级全局快门相机。
    - 参数：
      - 帧率：≥1000 帧 / 秒 (fps)。
      - 分辨率：2040×1080 及以上。
      - 波段：850nm - 940nm 近红外波段（对人眼不可见，对塑料反射强）。
-     - 探测距离：300 米处光斑识别率 ≥95%。
+     - 探测距离：1000 米处光斑识别率 ≥95%。
 
 2. **智能控制子系统（大脑）**
    - 核心：FPGA + 嵌入式 AI 加速模块。
@@ -85,7 +86,7 @@ Based on the hemispherical dome as the global space carrier, this project integr
      - 光束质量：M² < 1.3。
 
 #### 权利要求书（核心保护点）
-1. 一种穹顶防御系统，其特征在于，包括：一个红外探测单元，用于获取空域内目标的三维位置信息；一个控制处理单元，用于在小于 1 毫秒的时间内计算出目标瞄准点；一个激光发射单元，包含高能脉冲激光器和高速振镜，用于根据所述瞄准点发射激光束；所述激光束的脉冲频率不低于 1000Hz，且能够在 300 米距离内聚焦于直径小于 4 厘米的球体表面。
+1. 一种穹顶防御系统，其特征在于，包括：一个红外探测单元，用于获取空域内目标的三维位置信息；一个控制处理单元，用于在小于 1 毫秒的时间内计算出目标瞄准点；一个激光发射单元，包含高能脉冲激光器和高速振镜，用于根据所述瞄准点发射激光束；所述激光束的脉冲频率不低于 1000Hz，且能够在 1000 米距离内聚焦于直径小于 4 厘米的物体表面。
 2. 根据权利要求 1 所述的系统，其特征在于，所述高能脉冲激光器的波长为 1064nm，单脉冲能量范围为 50-80mJ，脉冲宽度为 10-20ns。
 3. 根据权利要求 1 所述的系统，其特征在于，所述红外探测单元的帧率不低于 1000 帧 / 秒，采用近红外波段主动照明。
 
