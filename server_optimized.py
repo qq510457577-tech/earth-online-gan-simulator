@@ -146,12 +146,12 @@ class Simulator:
 
     def _init_attackers(self):
         self.attackers = []
-        min_z = 80  # 攻击点最低z坐标，确保在切面上方足够高的位置
+        min_z = 1  # 攻击点最低z坐标，确保严格在切面上方
         for i in range(cfg.ATTACKER_NUM):
-            # 强制循环生成直到z坐标满足要求，彻底杜绝低于切面
+            # 强制循环生成直到z坐标满足要求，覆盖整个上半球曲面
             while True:
                 ang = np.random.uniform(0, 2 * math.pi)
-                elev = np.random.uniform(0.4, math.pi / 2 - 0.1)  # 提升最小俯仰角到0.4弧度≈23度
+                elev = np.random.uniform(0.05, math.pi / 2 - 0.05)  # 俯仰角覆盖整个上半球≈2.8度~87度
                 x, y, z = sphere_to_xyz(cfg.HEMI_RADIUS, ang, elev)
                 if z >= min_z:
                     break
@@ -240,25 +240,25 @@ class Simulator:
             can_launch = (gan_decide or (gan_launch < 0.3 and random_decide))
             
             # 攻击点随机漂移逻辑：发射后随机漂移到新位置
-            min_z = 80  # 攻击点最低z坐标阈值
+            min_z = 1  # 攻击点最低z坐标阈值，严格在切面上方
             if can_launch and len(self.balls) < cfg.MAX_BALLS:
-                # 发射后随机漂移到穹顶新位置，强制校验z坐标
+                # 发射后随机漂移到穹顶新位置，可出现在整个上半球曲面任意位置
                 while True:
                     a["ang"] = np.random.uniform(0, 2 * math.pi)
-                    a["elev"] = np.random.uniform(0.4, math.pi / 2 - 0.1)
+                    a["elev"] = np.random.uniform(0.05, math.pi / 2 - 0.05)
                     a["x"], a["y"], a["z"] = sphere_to_xyz(cfg.HEMI_RADIUS, a["ang"], a["elev"])
                     if a["z"] >= min_z:
                         break
             else:
-                # 未发射时缓慢移动，严格限制俯仰角范围
+                # 未发射时缓慢移动，覆盖整个上半球范围
                 a["ang"] = (a["ang"] + float(g_out[i, 0]) * 0.06 * speed) % (2 * math.pi)
-                a["elev"] = max(0.4, min(math.pi / 2 - 0.1, a["elev"] + float(g_out[i, 1]) * 0.04 * speed))
+                a["elev"] = max(0.05, min(math.pi / 2 - 0.05, a["elev"] + float(g_out[i, 1]) * 0.04 * speed))
                 a["x"], a["y"], a["z"] = sphere_to_xyz(cfg.HEMI_RADIUS, a["ang"], a["elev"])
                 # 移动后强制校验z坐标，低于阈值就重新生成
                 if a["z"] < min_z:
                     while True:
                         a["ang"] = np.random.uniform(0, 2 * math.pi)
-                        a["elev"] = np.random.uniform(0.4, math.pi / 2 - 0.1)
+                        a["elev"] = np.random.uniform(0.05, math.pi / 2 - 0.05)
                         a["x"], a["y"], a["z"] = sphere_to_xyz(cfg.HEMI_RADIUS, a["ang"], a["elev"])
                         if a["z"] >= min_z:
                             break
