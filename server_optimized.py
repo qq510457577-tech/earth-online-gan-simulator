@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-地球 Online GAN 攻防模拟器 - 后端服务
-Earth Online GAN Offensive and Defensive Simulator - Backend Server
-FastAPI + WebSocket 架构，后端运行模拟，前端轻量渲染
+地球 Online GAN 攻防模拟器 - 优化版后端
+修复内存泄漏、提升性能，支持长时间运行
 """
 import asyncio
 import json
@@ -12,6 +11,8 @@ import torch.nn as nn
 import math
 import time
 import threading
+import gc
+import os
 from collections import deque
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
@@ -37,13 +38,16 @@ class Config:
     GAN_LR_D = 0.0015
     GAN_TRAIN_FREQ = 6
     SIM_SPEED = 1.0
-    BALL_TRAIL = 6
+    BALL_TRAIL = 15  # 默认拖尾长度加长
     EXPLOSION_FRAMES = 15
     SIM_RUNNING = False
     # 视角参数（可被前端控制）
     VIEW_AZ = 30.0
     VIEW_EL = 25.0
     DOME_SCALE = 1.0
+    # 性能优化配置
+    GC_INTERVAL = 300  # 每300帧执行一次GC
+    PUSH_FPS = 30  # WebSocket推送帧率
 
 cfg = Config()
 
@@ -100,7 +104,7 @@ def compute_threat(ball: dict) -> float:
     return dist * 0.6 - speed * 0.4
 
 # --------------------------
-# 模拟器核心
+# 模拟器核心（优化版）
 # --------------------------
 class Simulator:
     def __init__(self):
@@ -129,20 +133,22 @@ class Simulator:
         self._last_launch_time = time.time()
         # 激光冷却控制
         self._last_fire_time = 0.0
-        
+        # GC控制
+        self._gc_counter = 0
+
         self._init_attackers()
         self.running = True
         self.lock = threading.Lock()
         
         # 启动模拟线程
         threading.Thread(target=self._run_loop, daemon=True).start()
-        print("[Simulator] 模拟器启动成功")
+        print("[Simulator] 模拟器启动成功（优化版）")
 
     def _init_attackers(self):
         self.attackers = []
         for i in range(cfg.ATTACKER_NUM):
             ang = np.random.uniform(0, 2 * math.pi)
-            elev = np.random.uniform(0.1, math.pi / 2)
+            elev = np.random.uniform(0.1, math.pi / 2 - 0.1)  # 严格在上半球
             x, y, z = sphere_to_xyz(cfg.HEMI_RADIUS, ang, elev)
             self.attackers.append({"x": x, "y": y, "z": z, "ang": ang, "elev": elev})
 
@@ -167,8 +173,12 @@ class Simulator:
         lg.backward()
         self.optG.step()
         
+        # 及时释放张量，避免内存泄漏
         self.loss_d_val = float(ld.detach().cpu())
         self.loss_g_val = float(lg.detach().cpu())
+        del x, y, ld, lg
+        if DEVICE.type == 'cuda':
+            torch.cuda.empty_cache()
 
     def _update_attackers(self):
         n = cfg.ATTACKER_NUM
@@ -181,7 +191,7 @@ class Simulator:
         
         while len(self.attackers) < n:
             ang = np.random.uniform(0, 2 * math.pi)
-            elev = np.random.uniform(0.1, math.pi / 2 - 0.1)  # 严格限制在上半球，z>0，安全余量
+            elev = np.random.uniform(0.1, math.pi / 2 - 0.1)  # 严格在上半球
             x, y, z = sphere_to_xyz(cfg.HEMI_RADIUS, ang, elev)
             self.attackers.append({"x": x, "y": y, "z": z, "ang": ang, "elev": elev})
         self.attackers = self.attackers[:n]
@@ -226,13 +236,13 @@ class Simulator:
             
             # 攻击点随机漂移逻辑：发射后随机漂移到新位置
             if can_launch and len(self.balls) < cfg.MAX_BALLS:
-                # 发射后随机漂移到穹顶新位置（水平面之上）
+                # 发射后随机漂移到穹顶新位置
                 a["ang"] = np.random.uniform(0, 2 * math.pi)
-                a["elev"] = np.random.uniform(0.1, math.pi / 2 - 0.1)  # 严格限制在上半球，z>0
+                a["elev"] = np.random.uniform(0.1, math.pi / 2 - 0.1)
             else:
                 # 未发射时缓慢移动
                 a["ang"] = (a["ang"] + float(g_out[i, 0]) * 0.06 * speed) % (2 * math.pi)
-                a["elev"] = max(0.2, min(math.pi / 2, a["elev"] + float(g_out[i, 1]) * 0.04 * speed))
+                a["elev"] = max(0.1, min(math.pi / 2 - 0.1, a["elev"] + float(g_out[i, 1]) * 0.04 * speed))
             a["x"], a["y"], a["z"] = sphere_to_xyz(cfg.HEMI_RADIUS, a["ang"], a["elev"])
             
             if len(self.balls) < cfg.MAX_BALLS and can_launch and np.random.rand() < 0.35 * speed:
@@ -268,6 +278,11 @@ class Simulator:
                 self.total_launch += 1
                 launched_now += 1
                 self._launch_count += 1
+        
+        # 及时释放张量
+        del noise, state, g_out
+        if DEVICE.type == 'cuda':
+            torch.cuda.empty_cache()
 
     def _update_balls(self):
         new_balls = []
@@ -299,16 +314,20 @@ class Simulator:
                 dot = laser_dx * bx_n + laser_dy * by_n + laser_dz * bz_n
                 in_beam = dot > lock_cos
                 in_range = d < cfg.HEMI_RADIUS * 0.85
-                if in_beam and in_range:
+                # 激光冷却判定
+                current_time = time.time()
+                can_fire = (current_time - self._last_fire_time) >= cfg.LASER_COOLDOWN
+                if in_beam and in_range and can_fire:
                     self.total_hit += 1
                     hits_now += 1
+                    self._last_fire_time = current_time
                     self.hit_effects.append({
                         "x": b["x"], "y": b["y"], "z": b["z"],
                         "life": cfg.EXPLOSION_FRAMES, "max_life": cfg.EXPLOSION_FRAMES
                     })
                     continue
             
-            if d > cfg.HEMI_RADIUS + 150:
+            if d > cfg.HEMI_RADIUS + 150 or b["z"] < 0:  # 限制小球只能在半球水平线（z>0）之上
                 continue
             new_balls.append(b)
         
@@ -345,6 +364,12 @@ class Simulator:
                     self.hit_effects = [he for he in self.hit_effects if he["life"] > 0]
                     for he in self.hit_effects:
                         he["life"] -= 1
+
+                    # 定期GC清理内存
+                    self._gc_counter += 1
+                    if self._gc_counter >= cfg.GC_INTERVAL:
+                        gc.collect()
+                        self._gc_counter = 0
             
             # 控制帧率
             elapsed = time.time() - start_time
@@ -352,14 +377,14 @@ class Simulator:
             time.sleep(sleep_time)
 
     def get_state(self) -> dict:
-        """获取当前模拟状态，用于前端渲染"""
+        """获取当前模拟状态，用于前端渲染，仅返回必要数据减少传输量"""
         with self.lock:
             hit_rate = self.total_hit / (self.total_launch + 1e-6)
             return {
-                "attackers": [{"x": a["x"], "y": a["y"], "z": a["z"]} for a in self.attackers],
-                "balls": [{"x": b["x"], "y": b["y"], "z": b["z"]} for b in self.balls],
-                "hits": [{"x": he["x"], "y": he["y"], "z": he["z"], "ratio": he["life"]/he["max_life"]} for he in self.hit_effects],
-                "turret": {"pan": self.turret_pan, "tilt": self.turret_tilt},
+                "attackers": [{"x": round(a["x"], 2), "y": round(a["y"], 2), "z": round(a["z"], 2)} for a in self.attackers],
+                "balls": [{"x": round(b["x"], 2), "y": round(b["y"], 2), "z": round(b["z"], 2)} for b in self.balls],
+                "hits": [{"x": round(he["x"], 2), "y": round(he["y"], 2), "z": round(he["z"], 2), "ratio": round(he["life"]/he["max_life"], 2)} for he in self.hit_effects],
+                "turret": {"pan": round(self.turret_pan, 2), "tilt": round(self.turret_tilt, 2)},
                 "stats": {
                     "total_launch": self.total_launch,
                     "total_hit": self.total_hit,
@@ -370,12 +395,6 @@ class Simulator:
                     "loss_g": round(self.loss_g_val, 6),
                     "loss_d": round(self.loss_d_val, 6),
                     "priority_mode": cfg.PRIORITY_MODE
-                },
-                "config": {
-                    "view_az": cfg.VIEW_AZ,
-                    "view_el": cfg.VIEW_EL,
-                    "dome_scale": cfg.DOME_SCALE,
-                    "hemi_radius": cfg.HEMI_RADIUS
                 }
             }
 
@@ -394,7 +413,6 @@ async def root():
 
 @app.get("/favicon.ico")
 async def favicon():
-    # 返回默认蓝色科技风图标
     return FileResponse("static/index.html", headers={"Content-Type": "image/x-icon"})
 
 @app.websocket("/ws")
@@ -407,7 +425,7 @@ async def websocket_endpoint(websocket: WebSocket):
         while True:
             # 接收前端指令（非阻塞）
             try:
-                data = await asyncio.wait_for(websocket.receive_text(), timeout=0.016)
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=0.03)
                 cmd = json.loads(data)
                 # 处理控制指令
                 if cmd["action"] == "toggle_sim":
@@ -439,10 +457,10 @@ async def websocket_endpoint(websocket: WebSocket):
             except asyncio.TimeoutError:
                 pass
             
-            # 推送最新状态
+            # 推送最新状态，30FPS推送，减少带宽和性能开销
             state = simulator.get_state()
             await websocket.send_text(json.dumps(state))
-            await asyncio.sleep(1/60)  # 60fps推送
+            await asyncio.sleep(1/cfg.PUSH_FPS)  # 动态帧率控制
     
     except WebSocketDisconnect:
         print("[WebSocket] 客户端断开连接")

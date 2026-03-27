@@ -24,18 +24,38 @@
             left: 0;
             z-index: 1;
         }
-        /* 左上角状态面板 */
-        #info-panel {
+        /* 左侧面板（状态+曲线） */
+        #left-panel {
             position: absolute;
             top: 20px;
             left: 20px;
+            width: 300px;
+            max-height: calc(100vh - 40px);
             background: rgba(8, 14, 42, 0.9);
             border: 1px solid #1e3a8a;
             border-radius: 8px;
-            padding: 12px 16px;
-            min-width: 240px;
+            padding: 16px;
+            overflow-y: auto;
             backdrop-filter: blur(10px);
             z-index: 100;
+        }
+        /* 滚动条样式 */
+        #left-panel::-webkit-scrollbar {
+            width: 6px;
+        }
+        #left-panel::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        #left-panel::-webkit-scrollbar-thumb {
+            background: #1e3a8a;
+            border-radius: 3px;
+        }
+        /* 状态面板 */
+        #info-panel {
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 6px;
+            padding: 12px;
+            margin-top: 8px;
         }
         .info-item {
             margin: 4px 0;
@@ -116,12 +136,12 @@
             color: white;
             border-color: #2563eb;
         }
-        /* 右侧面板（参数+图表） */
+        /* 右侧面板（仅参数） */
         #right-panel {
             position: absolute;
             top: 20px;
             right: 20px;
-            width: 340px;
+            width: 320px;
             max-height: calc(100vh - 40px);
             background: rgba(8, 14, 42, 0.9);
             border: 1px solid #1e3a8a;
@@ -131,6 +151,7 @@
             backdrop-filter: blur(10px);
             z-index: 100;
         }
+        /* 通用面板区块样式 */
         .panel-section {
             margin-bottom: 20px;
             padding-bottom: 16px;
@@ -179,7 +200,7 @@
             cursor: pointer;
         }
         .chart-container {
-            height: 160px;
+            height: 140px;
             margin-top: 10px;
             background: rgba(15, 23, 42, 0.6);
             border-radius: 6px;
@@ -242,43 +263,60 @@
 
     <div id="canvas-container"></div>
 
-    <!-- 左上角状态面板 -->
-    <div id="info-panel">
-        <div class="info-item">
-            <span class="info-label">模拟状态:</span>
-            <span class="info-value" id="sim-status">未启动</span>
+    <!-- 左侧面板（状态+曲线） -->
+    <div id="left-panel">
+        <!-- 状态面板 -->
+        <div class="panel-section">
+            <div class="section-title">📊 运行状态</div>
+            <div id="info-panel">
+                <div class="info-item">
+                    <span class="info-label">模拟状态:</span>
+                    <span class="info-value" id="sim-status">未启动</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">优先级模式:</span>
+                    <span class="info-value" id="priority-mode">最近优先</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">攻击方数量:</span>
+                    <span class="info-value" id="attacker-count">0</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">活跃目标:</span>
+                    <span class="info-value" id="ball-count">0</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">总发射:</span>
+                    <span class="info-value" id="total-launch">0</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">总命中:</span>
+                    <span class="info-value" id="total-hit">0</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">命中率:</span>
+                    <span class="hit-rate" id="hit-rate">0%</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">GAN G损失:</span>
+                    <span class="info-value" id="loss-g">0.0000</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">GAN D损失:</span>
+                    <span class="info-value" id="loss-d">0.0000</span>
+                </div>
+            </div>
         </div>
-        <div class="info-item">
-            <span class="info-label">优先级模式:</span>
-            <span class="info-value" id="priority-mode">最近优先</span>
-        </div>
-        <div class="info-item">
-            <span class="info-label">攻击方数量:</span>
-            <span class="info-value" id="attacker-count">0</span>
-        </div>
-        <div class="info-item">
-            <span class="info-label">活跃目标:</span>
-            <span class="info-value" id="ball-count">0</span>
-        </div>
-        <div class="info-item">
-            <span class="info-label">总发射:</span>
-            <span class="info-value" id="total-launch">0</span>
-        </div>
-        <div class="info-item">
-            <span class="info-label">总命中:</span>
-            <span class="info-value" id="total-hit">0</span>
-        </div>
-        <div class="info-item">
-            <span class="info-label">命中率:</span>
-            <span class="hit-rate" id="hit-rate">0%</span>
-        </div>
-        <div class="info-item">
-            <span class="info-label">GAN G损失:</span>
-            <span class="info-value" id="loss-g">0.0000</span>
-        </div>
-        <div class="info-item">
-            <span class="info-label">GAN D损失:</span>
-            <span class="info-value" id="loss-d">0.0000</span>
+
+        <!-- 学习曲线 -->
+        <div class="panel-section">
+            <div class="section-title">📈 学习曲线</div>
+            <div class="chart-container">
+                <canvas id="accuracy-chart"></canvas>
+            </div>
+            <div class="chart-container" style="margin-top: 16px;">
+                <canvas id="loss-chart"></canvas>
+            </div>
         </div>
     </div>
 
@@ -298,107 +336,118 @@
     <!-- 右侧面板 -->
     <div id="right-panel">
         <!-- 参数调节 -->
-        <div class="panel-section">
-            <div class="section-title">⚙️ 参数调节</div>
-            
-            <div class="param-item">
-                <div class="param-label">
-                    <span>攻击方数量</span>
-                    <span class="param-value" id="val-ATTACKER_NUM">15</span>
-                </div>
-                <input type="range" class="param-slider" id="p-ATTACKER_NUM" min="1" max="30" value="15" step="1">
+        <div class="section-title">⚙️ 参数调节</div>
+        
+        <div class="param-item">
+            <div class="param-label">
+                <span>攻击方数量</span>
+                <span class="param-value" id="val-ATTACKER_NUM">15<span style="color:#94a3b8; font-weight:normal;"> 个</span></span>
             </div>
-
-            <div class="param-item">
-                <div class="param-label">
-                    <span>发射概率</span>
-                    <span class="param-value" id="val-LAUNCH_PROB">0.20</span>
-                </div>
-                <input type="range" class="param-slider" id="p-LAUNCH_PROB" min="0.05" max="0.6" value="0.2" step="0.01">
-            </div>
-
-            <div class="param-item">
-                <div class="param-label">
-                    <span>小球速度</span>
-                    <span class="param-value" id="val-SPEED_BALL">2.2</span>
-                </div>
-                <input type="range" class="param-slider" id="p-SPEED_BALL" min="0.5" max="6.0" value="2.2" step="0.1">
-            </div>
-
-            <div class="param-item">
-                <div class="param-label">
-                    <span>红外锁定半径</span>
-                    <span class="param-value" id="val-IR_LOCK_RADIUS">20</span>
-                </div>
-                <input type="range" class="param-slider" id="p-IR_LOCK_RADIUS" min="6" max="40" value="20" step="1">
-            </div>
-
-            <div class="param-item">
-                <div class="param-label">
-                    <span>云台速度</span>
-                    <span class="param-value" id="val-TURRET_SPEED">6.0</span>
-                </div>
-                <input type="range" class="param-slider" id="p-TURRET_SPEED" min="1.0" max="15.0" value="6.0" step="0.5">
-            </div>
-
-            <div class="param-item">
-                <div class="param-label">
-                    <span>模拟速度倍率</span>
-                    <span class="param-value" id="val-SIM_SPEED">1.0</span>
-                </div>
-                <input type="range" class="param-slider" id="p-SIM_SPEED" min="0.1" max="3.0" value="1.0" step="0.1">
-            </div>
-
-            <div class="param-item">
-                <div class="param-label">
-                    <span>半球穹顶半径</span>
-                    <span class="param-value" id="val-HEMI_RADIUS">260</span>
-                </div>
-                <input type="range" class="param-slider" id="p-HEMI_RADIUS" min="150" max="350" value="260" step="10">
-            </div>
-
-            <div class="param-item">
-                <div class="param-label">
-                    <span>小球尾巴长度</span>
-                    <span class="param-value" id="val-BALL_TRAIL">8</span>
-                </div>
-                <input type="range" class="param-slider" id="p-BALL_TRAIL" min="0" max="20" value="8" step="1">
-            </div>
-
-            <div class="param-item">
-                <div class="param-label">
-                    <span>爆炸效果帧数</span>
-                    <span class="param-value" id="val-EXPLOSION_FRAMES">20</span>
-                </div>
-                <input type="range" class="param-slider" id="p-EXPLOSION_FRAMES" min="5" max="30" value="20" step="1">
-            </div>
-
-            <div class="param-item">
-                <div class="param-label">
-                    <span>生成器学习率</span>
-                    <span class="param-value" id="val-GAN_LR_G">0.0008</span>
-                </div>
-                <input type="range" class="param-slider" id="p-GAN_LR_G" min="0.0001" max="0.005" value="0.0008" step="0.0001">
-            </div>
-
-            <div class="param-item">
-                <div class="param-label">
-                    <span>判别器学习率</span>
-                    <span class="param-value" id="val-GAN_LR_D">0.0015</span>
-                </div>
-                <input type="range" class="param-slider" id="p-GAN_LR_D" min="0.0001" max="0.005" value="0.0015" step="0.0001">
-            </div>
+            <input type="range" class="param-slider" id="p-ATTACKER_NUM" min="1" max="30" value="15" step="1">
         </div>
 
-        <!-- 曲线图 -->
-        <div class="panel-section">
-            <div class="section-title">📈 学习曲线</div>
-            <div class="chart-container">
-                <canvas id="accuracy-chart"></canvas>
+        <div class="param-item">
+            <div class="param-label">
+                <span>发射概率</span>
+                <span class="param-value" id="val-LAUNCH_PROB">0.20</span>
             </div>
-            <div class="chart-container" style="margin-top: 16px;">
-                <canvas id="loss-chart"></canvas>
+            <input type="range" class="param-slider" id="p-LAUNCH_PROB" min="0.05" max="0.6" value="0.2" step="0.01">
+        </div>
+
+        <div class="param-item">
+            <div class="param-label">
+                <span>最大小球数量</span>
+                <span class="param-value" id="val-MAX_BALLS">80<span style="color:#94a3b8; font-weight:normal;"> 个</span></span>
             </div>
+            <input type="range" class="param-slider" id="p-MAX_BALLS" min="20" max="200" value="80" step="10">
+        </div>
+
+        <div class="param-item">
+            <div class="param-label">
+                <span>每秒发射数量</span>
+                <span class="param-value" id="val-LAUNCH_PER_SECOND">10<span style="color:#94a3b8; font-weight:normal;"> 个/秒</span></span>
+            </div>
+            <input type="range" class="param-slider" id="p-LAUNCH_PER_SECOND" min="1" max="30" value="10" step="1">
+        </div>
+
+        <div class="param-item">
+            <div class="param-label">
+                <span>小球速度</span>
+                <span class="param-value" id="val-SPEED_BALL">2.2<span style="color:#94a3b8; font-weight:normal;"> 单位/帧</span></span>
+            </div>
+            <input type="range" class="param-slider" id="p-SPEED_BALL" min="0.5" max="6.0" value="2.2" step="0.1">
+        </div>
+
+        <div class="param-item">
+            <div class="param-label">
+                <span>红外锁定半径</span>
+                <span class="param-value" id="val-IR_LOCK_RADIUS">20<span style="color:#94a3b8; font-weight:normal;"> 单位</span></span>
+            </div>
+            <input type="range" class="param-slider" id="p-IR_LOCK_RADIUS" min="6" max="40" value="20" step="1">
+        </div>
+
+        <div class="param-item">
+            <div class="param-label">
+                <span>激光冷却时间</span>
+                <span class="param-value" id="val-LASER_COOLDOWN">0.2<span style="color:#94a3b8; font-weight:normal;"> 秒</span></span>
+            </div>
+            <input type="range" class="param-slider" id="p-LASER_COOLDOWN" min="0.05" max="2.0" value="0.2" step="0.05">
+        </div>
+
+        <div class="param-item">
+            <div class="param-label">
+                <span>云台速度</span>
+                <span class="param-value" id="val-TURRET_SPEED">6.0<span style="color:#94a3b8; font-weight:normal;"> °/帧</span></span>
+            </div>
+            <input type="range" class="param-slider" id="p-TURRET_SPEED" min="1.0" max="15.0" value="6.0" step="0.5">
+        </div>
+
+        <div class="param-item">
+            <div class="param-label">
+                <span>模拟速度倍率</span>
+                <span class="param-value" id="val-SIM_SPEED">1.0<span style="color:#94a3b8; font-weight:normal;"> ×</span></span>
+            </div>
+            <input type="range" class="param-slider" id="p-SIM_SPEED" min="0.1" max="3.0" value="1.0" step="0.1">
+        </div>
+
+        <div class="param-item">
+            <div class="param-label">
+                <span>半球穹顶半径</span>
+                <span class="param-value" id="val-HEMI_RADIUS">260<span style="color:#94a3b8; font-weight:normal;"> 单位</span></span>
+            </div>
+            <input type="range" class="param-slider" id="p-HEMI_RADIUS" min="150" max="350" value="260" step="10">
+        </div>
+
+        <div class="param-item">
+            <div class="param-label">
+                <span>小球尾巴长度</span>
+                <span class="param-value" id="val-BALL_TRAIL">8<span style="color:#94a3b8; font-weight:normal;"> 帧</span></span>
+            </div>
+            <input type="range" class="param-slider" id="p-BALL_TRAIL" min="0" max="20" value="8" step="1">
+        </div>
+
+        <div class="param-item">
+            <div class="param-label">
+                <span>爆炸效果帧数</span>
+                <span class="param-value" id="val-EXPLOSION_FRAMES">20<span style="color:#94a3b8; font-weight:normal;"> 帧</span></span>
+            </div>
+            <input type="range" class="param-slider" id="p-EXPLOSION_FRAMES" min="5" max="30" value="20" step="1">
+        </div>
+
+        <div class="param-item">
+            <div class="param-label">
+                <span>生成器学习率</span>
+                <span class="param-value" id="val-GAN_LR_G">0.0008</span>
+            </div>
+            <input type="range" class="param-slider" id="p-GAN_LR_G" min="0.0001" max="0.005" value="0.0008" step="0.0001">
+        </div>
+
+        <div class="param-item">
+            <div class="param-label">
+                <span>判别器学习率</span>
+                <span class="param-value" id="val-GAN_LR_D">0.0015</span>
+            </div>
+            <input type="range" class="param-slider" id="p-GAN_LR_D" min="0.0001" max="0.005" value="0.0015" step="0.0001">
         </div>
     </div>
 
@@ -423,10 +472,10 @@
         let accuracyData = [];
         let lossGData = [];
         let lossDData = [];
-        let ballTrailLength = 8;
+        let ballTrailLength = 15; // 默认拖尾长度加长
         let explosionFrameCount = 20;
         const MAX_CHART_POINTS = 50;
-        const MAX_TRAIL_LENGTH = 20;
+        const MAX_TRAIL_LENGTH = 30; // 最大拖尾长度提升到30帧
         const MAX_EXPLOSION_FRAMES = 30;
 
         // 初始化Three.js
@@ -538,34 +587,62 @@
                 });
             });
 
+            // 加载本地存储的参数
+            function loadSavedParams() {
+                document.querySelectorAll('.param-slider').forEach(slider => {
+                    const key = slider.id.replace('p-', '');
+                    const savedValue = localStorage.getItem(`gan_param_${key}`);
+                    if (savedValue !== null) {
+                        slider.value = parseFloat(savedValue);
+                        // 触发更新
+                        slider.dispatchEvent(new Event('input'));
+                    }
+                });
+            }
+
             // 参数滑块事件
             document.querySelectorAll('.param-slider').forEach(slider => {
                 const key = slider.id.replace('p-', '');
                 const valEl = document.getElementById('val-' + key);
                 slider.addEventListener('input', () => {
                     const value = parseFloat(slider.value);
-                    // 格式化显示
+                    // 保存到本地存储
+                    localStorage.setItem(`gan_param_${key}`, value.toString());
+                    // 格式化显示+单位
+                    let unit = '';
+                    if (key === 'ATTACKER_NUM') unit = ' 个';
+                    else if (key === 'LAUNCH_PER_SECOND') unit = ' 个/秒';
+                    else if (key === 'MAX_BALLS') unit = ' 个';
+                    else if (key === 'SPEED_BALL') unit = ' 单位/帧';
+                    else if (key === 'IR_LOCK_RADIUS') unit = ' 单位';
+                    else if (key === 'TURRET_SPEED') unit = ' °/帧';
+                    else if (key === 'SIM_SPEED') unit = ' ×';
+                    else if (key === 'HEMI_RADIUS') unit = ' 单位';
+                    else if (key === 'BALL_TRAIL') unit = ' 帧';
+                    else if (key === 'EXPLOSION_FRAMES') unit = ' 帧';
+                    else if (key === 'LASER_COOLDOWN') unit = ' 秒';
+                    
                     if (key.startsWith('GAN_LR_')) {
-                        valEl.textContent = value.toFixed(4);
-                    } else if (key.includes('_') && !['ATTACKER_NUM', 'IR_LOCK_RADIUS', 'HEMI_RADIUS', 'BALL_TRAIL', 'EXPLOSION_FRAMES'].includes(key)) {
-                        valEl.textContent = value.toFixed(2);
+                        valEl.textContent = value.toFixed(4) + unit;
+                    } else if (key.includes('_') && !['ATTACKER_NUM', 'IR_LOCK_RADIUS', 'HEMI_RADIUS', 'BALL_TRAIL', 'EXPLOSION_FRAMES', 'MAX_BALLS', 'LAUNCH_PER_SECOND'].includes(key)) {
+                        valEl.textContent = value.toFixed(2) + unit;
                     } else {
-                        valEl.textContent = value.toFixed(0);
+                        valEl.textContent = value.toFixed(0) + unit;
                     }
                     // 特殊参数本地即时生效
                     if (key === 'BALL_TRAIL') {
-                        ballTrailLength = Math.max(0, Math.min(MAX_TRAIL_LENGTH, value));
+                        ballTrailLength = Math.max(0, Math.min(MAX_TRAIL_LENGTH, parseInt(value)));
                     } else if (key === 'HEMI_RADIUS') {
                         // 重建穹顶
                         scene.remove(dome);
                         const radius = value;
                         const geometry = new THREE.SphereGeometry(radius, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
                         const material = new THREE.MeshBasicMaterial({
-                            color: 0x143c8c,
+                            color: 0x2588ff,
                             transparent: true,
-                            opacity: 0.18,
+                            opacity: 0.3,
                             wireframe: true,
-                            wireframeLinewidth: 1
+                            wireframeLinewidth: 2
                         });
                         dome = new THREE.Mesh(geometry, material);
                         scene.add(dome);
@@ -759,26 +836,36 @@
             scene.add(laserLine);
         }
 
+        // 攻击者几何体和材质复用，减少内存开销
+        const attackerGeo = new THREE.SphereGeometry(6, 6, 6);
+        const attackerMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
         // 更新攻击者（红色发射点）
         function updateAttackers(data) {
-            attackers.forEach(a => scene.remove(a));
+            // 正确释放旧对象
+            attackers.forEach(a => {
+                scene.remove(a);
+                a.geometry.dispose();
+            });
             attackers = [];
             data.forEach(attacker => {
-                const geometry = new THREE.SphereGeometry(6, 8, 8);
-                const material = new THREE.MeshBasicMaterial({ color: 0xff0000 }); // 亮红色攻击方，更醒目
-                const mesh = new THREE.Mesh(geometry, material);
+                const mesh = new THREE.Mesh(attackerGeo, attackerMat);
                 mesh.position.set(attacker.x, attacker.y, attacker.z);
                 scene.add(mesh);
                 attackers.push(mesh);
             });
         }
 
-        // 更新小球（天蓝色+彗星尾）
+        // 更新小球（天蓝色+连续直线彗星尾 2-5mm视觉效果）
         function updateBalls(data) {
-            // 移除旧的小球和尾巴
-            balls.forEach(b => scene.remove(b));
+            // 正确释放旧对象内存
+            balls.forEach(b => {
+                scene.remove(b);
+                b.geometry.dispose();
+            });
             ballTrails.forEach(trail => {
-                trail.forEach(p => scene.remove(p));
+                scene.remove(trail);
+                if (trail.geometry) trail.geometry.dispose();
+                if (trail.material) trail.material.dispose();
             });
             balls = [];
             const newTrails = new Map();
@@ -787,43 +874,42 @@
             data.forEach((ball, idx) => {
                 const ballId = `ball_${idx}_${ball.x.toFixed(2)}_${ball.y.toFixed(2)}`;
                 
-                // 小球本体（亮天蓝色，更醒目）
-                const geometry = new THREE.SphereGeometry(7, 12, 12);
-                const material = new THREE.MeshBasicMaterial({ color: 0x00ffff });
-                const mesh = new THREE.Mesh(geometry, material);
-                mesh.position.set(ball.x, ball.y, ball.z);
-                scene.add(mesh);
-                balls.push(mesh);
+                // 小球本体（亮天蓝色）
+                const ballGeo = new THREE.SphereGeometry(7, 10, 10);
+                const ballMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+                const ballMesh = new THREE.Mesh(ballGeo, ballMat);
+                ballMesh.position.set(ball.x, ball.y, ball.z);
+                scene.add(ballMesh);
+                balls.push(ballMesh);
 
-                // 记录轨迹（天蓝色彗星尾）
-                let trail = [];
+                // 记录轨迹点
+                let trailPoints = [];
                 if (ballTrails.has(ballId)) {
-                    trail = ballTrails.get(ballId);
+                    trailPoints = ballTrails.get(ballId);
                 }
                 // 添加当前位置到轨迹
-                const trailPoint = new THREE.Mesh(
-                    new THREE.SphereGeometry(2, 8, 8),
-                    new THREE.MeshBasicMaterial({ color: 0x00d8ff, transparent: true, opacity: 0.7 })
-                );
-                trailPoint.position.set(ball.x, ball.y, ball.z);
-                trail.push(trailPoint);
+                trailPoints.push(new THREE.Vector3(ball.x, ball.y, ball.z));
                 
-                // 限制轨迹长度
-                while (trail.length > ballTrailLength) {
-                    const oldPoint = trail.shift();
-                    scene.remove(oldPoint);
+                // 限制轨迹长度：12~18个点对应2~5mm视觉长度
+                const targetTrailLength = Math.max(12, Math.min(18, ballTrailLength));
+                while (trailPoints.length > targetTrailLength) {
+                    trailPoints.shift();
                 }
 
-                // 渲染轨迹（渐变效果）
-                trail.forEach((point, i) => {
-                    const alpha = (i + 1) / trail.length * 0.7;
-                    const scale = (i + 1) / trail.length * 3 + 1;
-                    point.material.opacity = alpha;
-                    point.scale.setScalar(scale);
-                    scene.add(point);
-                });
-
-                newTrails.set(ballId, trail);
+                // 生成连续直线拖尾
+                if (trailPoints.length >= 2) {
+                    const trailGeo = new THREE.BufferGeometry().setFromPoints(trailPoints);
+                    // 渐变透明度：尾部更淡，头部更亮
+                    const trailMat = new THREE.LineBasicMaterial({
+                        color: 0x00ffff,
+                        transparent: true,
+                        opacity: 0.85,
+                        linewidth: 3
+                    });
+                    const trailLine = new THREE.Line(trailGeo, trailMat);
+                    scene.add(trailLine);
+                    newTrails.set(ballId, trailLine);
+                }
             });
             
             ballTrails = newTrails;
@@ -960,7 +1046,7 @@
             lossDEl.textContent = stats.loss_d.toFixed(4);
             lossGEl.style.color = '#ef4444';
             lossDEl.style.color = '#ef4444';
-            
+
             const toggleBtn = document.getElementById('toggle-btn');
             if (stats.sim_running) {
                 toggleBtn.classList.remove('start');
@@ -988,6 +1074,8 @@
             ws.onopen = () => {
                 console.log("WebSocket 连接成功");
                 document.getElementById('loading').classList.add('hidden');
+                // 连接成功后加载本地保存的参数
+                loadSavedParams();
             };
             
             ws.onmessage = (event) => {
