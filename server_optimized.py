@@ -148,13 +148,11 @@ class Simulator:
         self.attackers = []
         min_z = 1  # 攻击点最低z坐标，确保严格在切面上方
         for i in range(cfg.ATTACKER_NUM):
-            # 强制循环生成直到z坐标满足要求，覆盖整个上半球曲面
-            while True:
-                ang = np.random.uniform(0, 2 * math.pi)
-                elev = np.random.uniform(0.05, math.pi / 2 - 0.05)  # 俯仰角覆盖整个上半球≈2.8度~87度
-                x, y, z = sphere_to_xyz(cfg.HEMI_RADIUS, ang, elev)
-                if z >= min_z:
-                    break
+            # 上半球均匀球面采样，真正任意位置随机分布，无密集稀疏区域
+            ang = np.random.uniform(0, 2 * math.pi)  # 方位角0~360°均匀随机
+            u = np.random.uniform(0.5, 0.99)  # 上半球均匀采样，u∈[0.5,1]对应俯仰角∈[0, π/2 - 0.1]
+            elev = math.acos(2 * u - 1)  # 正确的球面均匀采样公式，点分布完全均匀
+            x, y, z = sphere_to_xyz(cfg.HEMI_RADIUS, ang, elev)
             self.attackers.append({"x": x, "y": y, "z": z, "ang": ang, "elev": elev})
 
     def _train_gan(self):
@@ -242,13 +240,11 @@ class Simulator:
             # 攻击点随机漂移逻辑：发射后随机漂移到新位置
             min_z = 1  # 攻击点最低z坐标阈值，严格在切面上方
             if can_launch and len(self.balls) < cfg.MAX_BALLS:
-                # 发射后随机漂移到穹顶新位置，可出现在整个上半球曲面任意位置
-                while True:
-                    a["ang"] = np.random.uniform(0, 2 * math.pi)
-                    a["elev"] = np.random.uniform(0.05, math.pi / 2 - 0.05)
-                    a["x"], a["y"], a["z"] = sphere_to_xyz(cfg.HEMI_RADIUS, a["ang"], a["elev"])
-                    if a["z"] >= min_z:
-                        break
+                # 发射后随机漂移到穹顶新位置，上半球均匀采样，任意位置随机出现
+                a["ang"] = np.random.uniform(0, 2 * math.pi)
+                u = np.random.uniform(0.5, 0.99)
+                a["elev"] = math.acos(2 * u - 1)
+                a["x"], a["y"], a["z"] = sphere_to_xyz(cfg.HEMI_RADIUS, a["ang"], a["elev"])
             else:
                 # 未发射时缓慢移动，覆盖整个上半球范围
                 a["ang"] = (a["ang"] + float(g_out[i, 0]) * 0.06 * speed) % (2 * math.pi)
