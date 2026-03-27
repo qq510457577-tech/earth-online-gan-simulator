@@ -146,10 +146,15 @@ class Simulator:
 
     def _init_attackers(self):
         self.attackers = []
+        min_z = 80  # 攻击点最低z坐标，确保在切面上方足够高的位置
         for i in range(cfg.ATTACKER_NUM):
-            ang = np.random.uniform(0, 2 * math.pi)
-            elev = np.random.uniform(0.3, math.pi / 2 - 0.1)  # 严格在上半球，俯仰角≥0.3弧度≈17度，确保z>0
-            x, y, z = sphere_to_xyz(cfg.HEMI_RADIUS, ang, elev)
+            # 强制循环生成直到z坐标满足要求，彻底杜绝低于切面
+            while True:
+                ang = np.random.uniform(0, 2 * math.pi)
+                elev = np.random.uniform(0.4, math.pi / 2 - 0.1)  # 提升最小俯仰角到0.4弧度≈23度
+                x, y, z = sphere_to_xyz(cfg.HEMI_RADIUS, ang, elev)
+                if z >= min_z:
+                    break
             self.attackers.append({"x": x, "y": y, "z": z, "ang": ang, "elev": elev})
 
     def _train_gan(self):
@@ -235,19 +240,28 @@ class Simulator:
             can_launch = (gan_decide or (gan_launch < 0.3 and random_decide))
             
             # 攻击点随机漂移逻辑：发射后随机漂移到新位置
+            min_z = 80  # 攻击点最低z坐标阈值
             if can_launch and len(self.balls) < cfg.MAX_BALLS:
-                # 发射后随机漂移到穹顶新位置，严格限制在上半球（俯仰角≥0.3弧度≈17度，确保z>0）
-                a["ang"] = np.random.uniform(0, 2 * math.pi)
-                a["elev"] = np.random.uniform(0.3, math.pi / 2 - 0.1)
+                # 发射后随机漂移到穹顶新位置，强制校验z坐标
+                while True:
+                    a["ang"] = np.random.uniform(0, 2 * math.pi)
+                    a["elev"] = np.random.uniform(0.4, math.pi / 2 - 0.1)
+                    a["x"], a["y"], a["z"] = sphere_to_xyz(cfg.HEMI_RADIUS, a["ang"], a["elev"])
+                    if a["z"] >= min_z:
+                        break
             else:
                 # 未发射时缓慢移动，严格限制俯仰角范围
                 a["ang"] = (a["ang"] + float(g_out[i, 0]) * 0.06 * speed) % (2 * math.pi)
-                a["elev"] = max(0.3, min(math.pi / 2 - 0.1, a["elev"] + float(g_out[i, 1]) * 0.04 * speed))
-            a["x"], a["y"], a["z"] = sphere_to_xyz(cfg.HEMI_RADIUS, a["ang"], a["elev"])
-            # 严格限制在上半球，确保z>0
-            if a["z"] <= 0:
-                a["elev"] = max(0.1, abs(a["elev"]))
+                a["elev"] = max(0.4, min(math.pi / 2 - 0.1, a["elev"] + float(g_out[i, 1]) * 0.04 * speed))
                 a["x"], a["y"], a["z"] = sphere_to_xyz(cfg.HEMI_RADIUS, a["ang"], a["elev"])
+                # 移动后强制校验z坐标，低于阈值就重新生成
+                if a["z"] < min_z:
+                    while True:
+                        a["ang"] = np.random.uniform(0, 2 * math.pi)
+                        a["elev"] = np.random.uniform(0.4, math.pi / 2 - 0.1)
+                        a["x"], a["y"], a["z"] = sphere_to_xyz(cfg.HEMI_RADIUS, a["ang"], a["elev"])
+                        if a["z"] >= min_z:
+                            break
             
             if len(self.balls) < cfg.MAX_BALLS and can_launch and np.random.rand() < 0.35 * speed:
                 speed_val = cfg.SPEED_BALL * (0.8 + np.random.rand() * 0.4)
