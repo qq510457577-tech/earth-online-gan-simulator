@@ -148,7 +148,7 @@ class Simulator:
         self.attackers = []
         for i in range(cfg.ATTACKER_NUM):
             ang = np.random.uniform(0, 2 * math.pi)
-            elev = np.random.uniform(0.1, math.pi / 2 - 0.1)  # 严格在上半球
+            elev = np.random.uniform(0.3, math.pi / 2 - 0.1)  # 严格在上半球，俯仰角≥0.3弧度≈17度，确保z>0
             x, y, z = sphere_to_xyz(cfg.HEMI_RADIUS, ang, elev)
             self.attackers.append({"x": x, "y": y, "z": z, "ang": ang, "elev": elev})
 
@@ -236,13 +236,13 @@ class Simulator:
             
             # 攻击点随机漂移逻辑：发射后随机漂移到新位置
             if can_launch and len(self.balls) < cfg.MAX_BALLS:
-                # 发射后随机漂移到穹顶新位置
+                # 发射后随机漂移到穹顶新位置，严格限制在上半球（俯仰角≥0.3弧度≈17度，确保z>0）
                 a["ang"] = np.random.uniform(0, 2 * math.pi)
-                a["elev"] = np.random.uniform(0.1, math.pi / 2 - 0.1)
+                a["elev"] = np.random.uniform(0.3, math.pi / 2 - 0.1)
             else:
-                # 未发射时缓慢移动
+                # 未发射时缓慢移动，严格限制俯仰角范围
                 a["ang"] = (a["ang"] + float(g_out[i, 0]) * 0.06 * speed) % (2 * math.pi)
-                a["elev"] = max(0.1, min(math.pi / 2 - 0.1, a["elev"] + float(g_out[i, 1]) * 0.04 * speed))
+                a["elev"] = max(0.3, min(math.pi / 2 - 0.1, a["elev"] + float(g_out[i, 1]) * 0.04 * speed))
             a["x"], a["y"], a["z"] = sphere_to_xyz(cfg.HEMI_RADIUS, a["ang"], a["elev"])
             # 严格限制在上半球，确保z>0
             if a["z"] <= 0:
