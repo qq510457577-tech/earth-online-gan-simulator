@@ -468,6 +468,24 @@ async def websocket_endpoint(websocket: WebSocket):
                         elif k == "LASER_COOLDOWN":
                             v = max(0.05, min(2.0, v))
                         setattr(cfg, k, v)
+                elif cmd["action"] == "reset_sim":
+                    # 重置模拟所有数据，保留参数设置
+                    cfg.SIM_RUNNING = False
+                    with simulator.lock:
+                        simulator.total_hit = 0
+                        simulator.total_launch = 0
+                        simulator.frame = 0
+                        simulator.balls = []
+                        simulator.hit_effects = []
+                        simulator.loss_g_val = 0.0
+                        simulator.loss_d_val = 0.0
+                        simulator.turret_pan = 0.0
+                        simulator.turret_tilt = 45.0
+                        simulator._launch_count = 0
+                        simulator._last_launch_time = time.time()
+                        simulator._last_fire_time = 0.0
+                        # 重新初始化攻击者位置
+                        simulator._init_attackers()
             except asyncio.TimeoutError:
                 pass
             

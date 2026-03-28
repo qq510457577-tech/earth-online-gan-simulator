@@ -324,6 +324,7 @@
     <div id="control-bar">
         <button class="btn start" id="toggle-btn">▶ 启动模拟</button>
         <button class="btn" id="reset-btn">🔄 重置视角</button>
+        <button class="btn stop" id="reset-sim-btn">🗑️ 重置模拟</button>
         <div style="border-left: 1px solid #1e3a8a; height: 24px; margin: 0 8px;"></div>
         <div style="font-size: 12px; color: #94a3b8;">锁定优先级:</div>
         <div class="priority-btns">
@@ -576,6 +577,7 @@
             // 按钮事件
             document.getElementById('toggle-btn').addEventListener('click', toggleSimulation);
             document.getElementById('reset-btn').addEventListener('click', resetView);
+            document.getElementById('reset-sim-btn').addEventListener('click', resetSimulation);
             
             // 优先级切换
             document.querySelectorAll('.priority-btn').forEach(btn => {
@@ -1125,6 +1127,23 @@
             rotationX = 0.5;
             rotationY = 0;
             updateCameraPosition();
+        }
+
+        // 重置模拟
+        function resetSimulation() {
+            if (confirm('确定要重置所有模拟数据吗？所有运行记录将被清空，参数设置保留。')) {
+                sendCommand('reset_sim');
+                // 清空前端图表数据
+                accuracyData = [];
+                lossGData = [];
+                lossDData = [];
+                accuracyChart.data.labels = [];
+                lossChart.data.labels = [];
+                accuracyChart.update();
+                lossChart.update();
+                // 重置视角
+                resetView();
+            }
         }
 
         // 窗口大小调整
