@@ -71,12 +71,12 @@ def load_font(name: str, size: int, bold: bool = False) -> pygame.font.Font:
     try:
         # 优先尝试用户指定字体
         return pygame.font.SysFont(name, size, bold=bold)
-    except:
+    except pygame.error:
         # 中文环境fallback
         for font_name in ["simhei", "Microsoft YaHei", "Noto Sans CJK", "PingFang SC", "Arial Unicode MS"]:
             try:
                 return pygame.font.SysFont(font_name, size, bold=bold)
-            except:
+            except pygame.error:
                 continue
         # 终极fallback
         return pygame.font.Font(None, size)
@@ -113,6 +113,12 @@ class Config:
     GAN_LR_D: float = 0.0015
     GAN_TRAIN_FREQ: int = 4
     GAN_BATCH_SIZE: int = 16
+    # GAN模型超参数
+    GAN_HIDDEN_SIZE: int = 128
+    GAN_LEAKY_RELU_SLOPE: float = 0.2
+    GAN_OUTPUT_ACTIVATION: str = "tanh"
+    # 混合精度训练开关
+    GAN_AMP_ENABLED: bool = True
     
     # 串口配置
     USE_SERIAL: bool = False
@@ -134,18 +140,42 @@ class Config:
 
     @classmethod
     def load_from_file(cls, path: str) -> None:
-        """从JSON文件加载配置"""
+        """从JSON文件加载配置，包含参数合法性校验"""
         if not os.path.exists(path):
-            return
+            raise FileNotFoundError(f"配置文件不存在: {path}")
         try:
             with open(path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 for key, value in data.items():
-                    if hasattr(cls, key):
-                        setattr(cls, key, value)
+                    if not hasattr(cls, key):
+                        continue
+                    # 类型校验
+                    expected_type = type(getattr(cls, key))
+                    if not isinstance(value, expected_type):
+                        raise ValueError(f"参数 {key} 类型错误，预期 {expected_type.__name__}，实际 {type(value).__name__}")
+                    # 范围校验
+                    if key == "ATTACKER_NUM":
+                        if not (10 <= value <= 100 and isinstance(value, int)):
+                            raise ValueError(f"ATTACKER_NUM 必须是10~100的正整数，当前值: {value}")
+                    elif key in ["WIDTH", "HEIGHT"]:
+                        if value <= 0:
+                            raise ValueError(f"窗口大小 {key} 必须大于0，当前值: {value}")
+                    elif key == "FPS":
+                        if not (1 <= value <= 240):
+                            raise ValueError(f"FPS 必须在1~240之间，当前值: {value}")
+                    elif key == "HEMI_RADIUS":
+                        if not (100 <= value <= 500):
+                            raise ValueError(f"HEMI_RADIUS 必须在100~500之间，当前值: {value}")
+                    elif key == "LAUNCH_PROB":
+                        if not (0.0 <= value <= 1.0):
+                            raise ValueError(f"LAUNCH_PROB 必须在0~1之间，当前值: {value}")
+                    elif key == "SERIAL_PORT":
+                        if not isinstance(value, str) or len(value.strip()) == 0:
+                            raise ValueError(f"SERIAL_PORT 不能为空")
+                    setattr(cls, key, value)
             print(f"[Config] 已加载配置: {path}")
-        except Exception as e:
-            print(f"[Config] 加载配置失败: {e}")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"配置文件JSON格式错误: {e}")
 
     @classmethod
     def save_to_file(cls, path: str) -> None:
@@ -160,7 +190,7 @@ class Config:
 
     @classmethod
     def load_preset(cls, preset_name: str) -> None:
-        """加载参数预设"""
+        """加载参数预设，不存在时抛出明确错误"""
         presets = {
             "低强度": {
                 "ATTACKER_NUM": 15,
@@ -187,10 +217,11 @@ class Config:
                 "SIM_SPEED": 2.0
             }
         }
-        if preset_name in presets:
-            for k, v in presets[preset_name].items():
-                setattr(cls, k, v)
-            print(f"[Config] 已加载预设: {preset_name}")
+        if preset_name not in presets:
+            raise ValueError(f"不存在的预设名称: {preset_name}，可用预设: {list(presets.keys())}")
+        for k, v in presets[preset_name].items():
+            setattr(cls, k, v)
+        print(f"[Config] 已加载预设: {preset_name}")
 
 cfg = Config()
 
@@ -198,18 +229,34 @@ cfg = Config()
 # GAN模型
 # --------------------------
 class Generator(nn.Module):
-    def __init__(self, attacker_count: int):
+    def __init__(self):
         super().__init__()
-        self.attacker_count = attacker_count
-        self.net = nn.Sequential(
-            nn.Linear(16, 128), nn.LeakyReLU(0.2),
-            nn.Linear(128, 256), nn.LeakyReLU(0.2),
-            nn.Linear(256, 128), nn.LeakyReLU(0.2),
-            nn.Linear(128, attacker_count * 3), nn.Tanh()
+        self.hidden_size = cfg.GAN_HIDDEN_SIZE
+        self.leaky_slope = cfg.GAN_LEAKY_RELU_SLOPE
+        # 共享基础层
+        self.base_layers = nn.Sequential(
+            nn.Linear(16, self.hidden_size), nn.LeakyReLU(self.leaky_slope),
+            nn.Linear(self.hidden_size, self.hidden_size * 2), nn.LeakyReLU(self.leaky_slope),
+            nn.Linear(self.hidden_size * 2, self.hidden_size), nn.LeakyReLU(self.leaky_slope),
         ).to(DEVICE)
+        # 动态输出层，根据ATTACKER_NUM调整
+        self.update_attacker_count(cfg.ATTACKER_NUM)
+        # 混合精度GradScaler
+        self.scaler = torch.cuda.amp.GradScaler(enabled=cfg.GAN_AMP_ENABLED and DEVICE.type == 'cuda')
+
+    def update_attacker_count(self, new_count: int) -> None:
+        """动态调整攻击方数量，更新输出层维度"""
+        self.attacker_count = new_count
+        self.output_layer = nn.Linear(self.hidden_size, new_count * 3).to(DEVICE)
+        if cfg.GAN_OUTPUT_ACTIVATION == "tanh":
+            self.activation = nn.Tanh()
+        else:
+            self.activation = nn.Identity()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x).view(-1, self.attacker_count, 3)
+        features = self.base_layers(x)
+        output = self.activation(self.output_layer(features))
+        return output.view(-1, self.attacker_count, 3)
 
 class Discriminator(nn.Module):
     def __init__(self):
@@ -231,9 +278,10 @@ class SerialController:
     def __init__(self):
         self.ser: Optional[serial.Serial] = None
         self.connected: bool = False
-        self._queue: queue.Queue = queue.Queue(maxsize=32)
+        self._queue: queue.Queue[str] = queue.Queue(maxsize=32)
         self._reconnect_interval: int = 5  # 重连间隔（秒）
         self._last_reconnect: float = 0
+        self._closing: bool = False
         if cfg.USE_SERIAL and HAS_SERIAL:
             self._connect()
             threading.Thread(target=self._worker, daemon=True).start()
@@ -269,30 +317,43 @@ class SerialController:
                 time.sleep(1)
 
     def send(self, pan: float, tilt: float, laser: int = 1) -> None:
-        """发送控制指令"""
-        if self.connected and not self._queue.full():
+        """发送控制指令，先校验参数合法性"""
+        # 参数合法性校验，避免硬件损坏
+        if not (-180 <= pan <= 180):
+            print(f"[Serial] 无效pan值: {pan:.1f}，必须在[-180, 180]范围内")
+            return
+        if not (0 <= tilt <= 90):
+            print(f"[Serial] 无效tilt值: {tilt:.1f}，必须在[0, 90]范围内")
+            return
+        if self.connected:
             try:
                 self._queue.put_nowait(f"PAN {pan:.1f} TILT {tilt:.1f} LASER {laser}\n")
             except queue.Full:
-                pass
+                print(f"[Serial] 发送队列已满，指令丢弃: PAN {pan:.1f} TILT {tilt:.1f}")
 
     def close(self) -> None:
-        """关闭串口"""
+        """关闭串口，先等待队列中所有指令发送完成"""
+        self._closing = True
+        print(f"[Serial] 等待队列中 {self._queue.qsize()} 条指令发送完成...")
+        # 等待队列清空
+        while not self._queue.empty():
+            time.sleep(0.1)
         if self.ser and self.ser.is_open:
             self.ser.close()
             self.connected = False
+            print("[Serial] 串口已关闭")
 
 # --------------------------
 # 日志与数据统计
 # --------------------------
 class Logger:
     def __init__(self):
-        self.hits: deque = deque(maxlen=cfg.LOG_MAXLEN)
-        self.launches: deque = deque(maxlen=cfg.LOG_MAXLEN)
-        self.accuracy: deque = deque(maxlen=cfg.LOG_MAXLEN)
-        self.loss_g: deque = deque(maxlen=cfg.LOG_MAXLEN)
-        self.loss_d: deque = deque(maxlen=cfg.LOG_MAXLEN)
-        self.events: List[str] = []
+        self.hits: deque[int] = deque(maxlen=cfg.LOG_MAXLEN)
+        self.launches: deque[int] = deque(maxlen=cfg.LOG_MAXLEN)
+        self.accuracy: deque[float] = deque(maxlen=cfg.LOG_MAXLEN)
+        self.loss_g: deque[float] = deque(maxlen=cfg.LOG_MAXLEN)
+        self.loss_d: deque[float] = deque(maxlen=cfg.LOG_MAXLEN)
+        self.events: deque[str] = deque(maxlen=500)
         self._surf: Optional[pygame.Surface] = None
         self._lock: threading.Lock = threading.Lock()
         self._dirty: bool = False
@@ -314,13 +375,23 @@ class Logger:
         ts = time.strftime("%H:%M:%S")
         level_tag = f"[{level.upper()}]" if level != "info" else ""
         self.events.append(f"[{ts}]{level_tag} {msg}")
-        if len(self.events) > 500:
-            self.events = self.events[-500:]
 
     def export_data(self, path: str) -> None:
-        """导出统计数据到CSV"""
+        """导出统计数据到CSV，禁止路径遍历"""
+        # 路径安全校验
+        if ".." in path or path.startswith("/") or (len(path) > 200:
+            self.log(f"非法导出路径: {path}，禁止路径遍历或绝对路径", level="error")
+            return
+        # 确保仅允许导出到当前目录下的export文件夹
+        export_dir = os.path.abspath("./export")
+        os.makedirs(export_dir, exist_ok=True)
+        full_path = os.path.abspath(os.path.join(export_dir, os.path.basename(path)))
+        # 校验路径是否在允许的目录内
+        if not full_path.startswith(export_dir + os.sep):
+            self.log(f"非法导出路径: {path}，超出允许的目录范围", level="error")
+            return
         try:
-            with open(path, 'w', newline='', encoding='utf-8') as f:
+            with open(full_path, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
                 writer.writerow(["timestamp", "hits", "launches", "accuracy", "loss_g", "loss_d"])
                 for i in range(len(self.hits)):
@@ -332,8 +403,8 @@ class Logger:
                         self.loss_g[i] if i < len(self.loss_g) else "",
                         self.loss_d[i] if i < len(self.loss_d) else ""
                     ])
-            self.log(f"数据已导出到: {path}")
-        except Exception as e:
+            self.log(f"数据已导出到: {full_path}")
+        except OSError as e:
             self.log(f"导出数据失败: {e}", level="error")
 
     def render_plot_bg(self) -> None:
@@ -399,22 +470,42 @@ class Logger:
 # --------------------------
 # 3D渲染相关
 # --------------------------
+# 视角变换三角函数缓存
+_cached_view_az: float = -1.0
+_cached_view_el: float = -1.0
+_cached_sin_az: float = 0.0
+_cached_cos_az: float = 0.0
+_cached_sin_el: float = 0.0
+_cached_cos_el: float = 0.0
+
 def project(x: float, y: float, z: float, center_x: float, center_y: float) -> Tuple[int, int]:
     """3D坐标投影到2D屏幕，支持视角旋转"""
+    global _cached_view_az, _cached_view_el, _cached_sin_az, _cached_cos_az, _cached_sin_el, _cached_cos_el
     scale = cfg.DOME_SCALE
-    az = math.radians(cfg.VIEW_AZ)
-    el = math.radians(cfg.VIEW_EL)
+    
+    # 仅当视角变化时重新计算三角函数
+    if cfg.VIEW_AZ != _cached_view_az:
+        _cached_view_az = cfg.VIEW_AZ
+        az = math.radians(cfg.VIEW_AZ)
+        _cached_sin_az = math.sin(az)
+        _cached_cos_az = math.cos(az)
+    
+    if cfg.VIEW_EL != _cached_view_el:
+        _cached_view_el = cfg.VIEW_EL
+        el = math.radians(cfg.VIEW_EL)
+        _cached_sin_el = math.sin(el)
+        _cached_cos_el = math.cos(el)
     
     # 水平旋转（方位角）
-    x1 = x * math.cos(az) - y * math.sin(az)
-    y1 = x * math.sin(az) + y * math.cos(az)
+    x1 = x * _cached_cos_az - y * _cached_sin_az
+    y1 = x * _cached_sin_az + y * _cached_cos_az
     
     # 垂直旋转（俯仰角）
-    y2 = y1 * math.cos(el) - z * math.sin(el)
-    z2 = y1 * math.sin(el) + z * math.cos(el)
+    y2 = y1 * _cached_cos_el - z * _cached_sin_el
+    z2 = y1 * _cached_sin_el + z * _cached_cos_el
     
     # 等轴投影
-    screen_x = int(center_x + x1 * scale)
+    screen_x = int(center_x + y2 * scale)
     screen_y = int(center_y - z2 * scale)
     return screen_x, screen_y
 
@@ -477,14 +568,20 @@ class DomeRenderer:
 # --------------------------
 class ParamPanel:
     """参数控制面板"""
-    PANEL_W = 310
     SLIDER_HEIGHT = 22
+    
+    @property
+    def PANEL_W(self) -> int:
+        """面板宽度为窗口宽度的22%，最小280px"""
+        return max(280, int(cfg.WIDTH * 0.22))
 
     def __init__(self, x: int, y: int, w: int, h: int):
         self.rect = pygame.Rect(x, y, w, h)
         self.font: Optional[pygame.font.Font] = None
         self.font_small: Optional[pygame.font.Font] = None
         self._dragging: Optional[int] = None
+        # 滑块配置项：(显示名称, 配置属性名, 最小值, 最大值, 步长, 是否整数, 缩放系数)
+        # 缩放系数(scale): 用于调整浮点数参数的显示精度，如0.0001的学习率乘以10000后显示为整数
         self._sliders = [
             ("攻击方数量", "ATTACKER_NUM", 10, 50, 1, True, 1),
             ("发射概率", "LAUNCH_PROB", 0.05, 0.6, 0.01, False, 1),
