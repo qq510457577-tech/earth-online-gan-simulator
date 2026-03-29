@@ -13,11 +13,16 @@ import time
 import threading
 import gc
 import os
+import csv
+import serial
+from datetime import datetime
 from collections import deque
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from typing import List, Dict, Optional
+from utils import lerp_angle, sphere_to_xyz, compute_threat, validate_param
+import openpyxl
 
 # 配置
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -48,6 +53,20 @@ class Config:
     # 性能优化配置
     GC_INTERVAL = 300  # 每300帧执行一次GC
     PUSH_FPS = 30  # WebSocket推送帧率
+    # 串口配置
+    SERIAL_PORT = "/dev/ttyUSB0"
+    SERIAL_BAUD = 115200
+    SERIAL_PARITY = "N"
+    SERIAL_STOP_BITS = 1
+    SERIAL_TIMEOUT = 1
+    # 告警配置
+    ALARM_LOW_HIT_RATE_THRESHOLD = 30  # 低于30%
+    ALARM_LOW_HIT_RATE_DURATION = 10  # 持续10秒
+    ALARM_OVERLOAD_THRESHOLD = 0.8  # 超过MAX_BALLS的80%
+    ALARM_LOSS_FLUCTUATION_THRESHOLD = 2.0  # 损失波动超过2倍
+    # 配置文件路径
+    CONFIG_FILE = "config.json"
+    MODEL_SAVE_PATH = "gan_models/"
 
 cfg = Config()
 
@@ -55,15 +74,34 @@ cfg = Config()
 # GAN模型
 # --------------------------
 class Generator(nn.Module):
-    def __init__(self, attacker_count: int):
+    def __init__(self, attacker_count: int, noise_dim: int = 10, state_dim: int = 6):
         super().__init__()
         self.attacker_count = attacker_count
-        self.net = nn.Sequential(
-            nn.Linear(16, 128), nn.LeakyReLU(0.2),
+        self.noise_dim = noise_dim
+        self.state_dim = state_dim
+        self.input_dim = noise_dim + state_dim
+        self.base_layers = nn.Sequential(
+            nn.Linear(self.input_dim, 128), nn.LeakyReLU(0.2),
             nn.Linear(128, 256), nn.LeakyReLU(0.2),
             nn.Linear(256, 128), nn.LeakyReLU(0.2),
-            nn.Linear(128, attacker_count * 3), nn.Tanh()
         ).to(DEVICE)
+        self.output_layer = nn.Linear(128, attacker_count * 3).to(DEVICE)
+        self.activation = nn.Tanh()
+
+    def update_attacker_count(self, new_count: int) -> None:
+        """动态扩展攻击方数量，保留基础层权重，仅重新初始化输出层"""
+        self.attacker_count = new_count
+        # 仅重新初始化输出层，基础层权重保留
+        self.output_layer = nn.Linear(128, new_count * 3).to(DEVICE)
+        # 初始化输出层权重
+        nn.init.xavier_normal_(self.output_layer.weight)
+        if self.output_layer.bias is not None:
+            nn.init.zeros_(self.output_layer.bias)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        features = self.base_layers(x)
+        output = self.activation(self.output_layer(features))
+        return output.view(-1, self.attacker_count, 3)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x).view(-1, self.attacker_count, 3)
@@ -81,27 +119,7 @@ class Discriminator(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
 
-# --------------------------
-# 工具函数
-# --------------------------
-def lerp_angle(current: float, target: float, speed: float) -> float:
-    diff = (target - current + 180) % 360 - 180
-    return current + math.copysign(min(abs(diff), speed), diff)
 
-def sphere_to_xyz(radius: float, azimuth: float, elevation: float) -> tuple[float, float, float]:
-    x = radius * math.sin(elevation) * math.cos(azimuth)
-    y = radius * math.sin(elevation) * math.sin(azimuth)
-    z = radius * math.cos(elevation)
-    return x, y, z
-
-def compute_threat(ball: dict) -> float:
-    dist = ball["dist"]
-    speed = ball["speed"]
-    if cfg.PRIORITY_MODE == "nearest":
-        return dist
-    if cfg.PRIORITY_MODE == "fastest":
-        return -speed
-    return dist * 0.6 - speed * 0.4
 
 # --------------------------
 # 模拟器核心（优化版）
@@ -113,6 +131,8 @@ class Simulator:
         self.optG = torch.optim.Adam(self.G.parameters(), lr=cfg.GAN_LR_G, betas=(0.5, 0.999))
         self.optD = torch.optim.Adam(self.D.parameters(), lr=cfg.GAN_LR_D, betas=(0.5, 0.999))
         self.bce = nn.BCELoss()
+        # 混合精度训练支持
+        self.scaler = torch.cuda.amp.GradScaler(enabled=DEVICE.type == 'cuda')
         
         self.attackers: List[Dict] = []
         self.balls: List[Dict] = []
@@ -166,20 +186,31 @@ class Simulator:
         x = torch.tensor(batch, dtype=torch.float32).to(DEVICE)
         y = torch.tensor(labels, dtype=torch.float32).to(DEVICE)
         
-        self.optD.zero_grad()
-        ld = self.bce(self.D(x), y)
-        ld.backward()
-        self.optD.step()
+        # 混合精度训练
+        with torch.cuda.amp.autocast(enabled=DEVICE.type == 'cuda'):
+            # 训练判别器
+            self.optD.zero_grad()
+            d_out = self.D(x)
+            ld = self.bce(d_out, y)
         
-        self.optG.zero_grad()
-        lg = -torch.mean(torch.log(self.D(x.detach()) + 1e-7))
-        lg.backward()
-        self.optG.step()
+        self.scaler.scale(ld).backward()
+        self.scaler.step(self.optD)
+        self.scaler.update()
+        
+        with torch.cuda.amp.autocast(enabled=DEVICE.type == 'cuda'):
+            # 训练生成器
+            self.optG.zero_grad()
+            d_out_fake = self.D(x.detach())
+            lg = -torch.mean(torch.log(d_out_fake + 1e-7))
+        
+        self.scaler.scale(lg).backward()
+        self.scaler.step(self.optG)
+        self.scaler.update()
         
         # 及时释放张量，避免内存泄漏
         self.loss_d_val = float(ld.detach().cpu())
         self.loss_g_val = float(lg.detach().cpu())
-        del x, y, ld, lg
+        del x, y, ld, lg, d_out, d_out_fake
         if DEVICE.type == 'cuda':
             torch.cuda.empty_cache()
 
@@ -200,10 +231,13 @@ class Simulator:
         self.attackers = self.attackers[:n]
         
         if n != self._prev_attacker_num:
-            self.G = Generator(n)
+            # 动态扩展攻击方数量，保留已训练的基础层权重
+            self.G.update_attacker_count(n)
+            # 优化器重新绑定新的参数
             self.optG = torch.optim.Adam(self.G.parameters(), lr=cfg.GAN_LR_G, betas=(0.5, 0.999))
             self.optD = torch.optim.Adam(self.D.parameters(), lr=cfg.GAN_LR_D, betas=(0.5, 0.999))
             self._prev_attacker_num = n
+            print(f"[GAN] 攻击方数量已更新为: {n}，训练权重已保留")
 
         # 发射速率控制：每秒不超过LAUNCH_PER_SECOND个
         current_time = time.time()
@@ -351,7 +385,7 @@ class Simulator:
         if not self.balls:
             return None
         
-        self.balls.sort(key=compute_threat)
+        self.balls.sort(key=lambda x: compute_threat(x, cfg.PRIORITY_MODE))
         target = self.balls[0]
         pan = math.degrees(math.atan2(target["y"], target["x"]))
         tilt = math.degrees(math.atan2(target["z"], math.sqrt(target["x"] ** 2 + target["y"] ** 2) + 1e-6))
@@ -445,29 +479,72 @@ async def websocket_endpoint(websocket: WebSocket):
                 if cmd["action"] == "toggle_sim":
                     cfg.SIM_RUNNING = not cfg.SIM_RUNNING
                 elif cmd["action"] == "update_view":
-                    cfg.VIEW_AZ = cmd.get("az", cfg.VIEW_AZ)
-                    cfg.VIEW_EL = cmd.get("el", cfg.VIEW_EL)
-                    cfg.DOME_SCALE = cmd.get("scale", cfg.DOME_SCALE)
+                    # 视角参数校验
+                    if "az" in cmd:
+                        try:
+                            az = float(cmd["az"])
+                            cfg.VIEW_AZ = max(-360.0, min(720.0, az))
+                        except (ValueError, TypeError):
+                            pass
+                    if "el" in cmd:
+                        try:
+                            el = float(cmd["el"])
+                            cfg.VIEW_EL = max(-90.0, min(90.0, el))
+                        except (ValueError, TypeError):
+                            pass
+                    if "scale" in cmd:
+                        try:
+                            scale = float(cmd["scale"])
+                            cfg.DOME_SCALE = max(0.1, min(10.0, scale))
+                        except (ValueError, TypeError):
+                            pass
                 elif cmd["action"] == "set_priority":
                     cfg.PRIORITY_MODE = cmd.get("mode", "nearest")
                 elif cmd["action"] == "update_param":
                     k = cmd.get("key")
                     v = cmd.get("value")
-                    if hasattr(cfg, k):
+                    if not hasattr(cfg, k):
+                        continue
+                    # 类型转换
+                    try:
                         if isinstance(getattr(cfg, k), int):
                             v = int(v)
                         elif isinstance(getattr(cfg, k), float):
                             v = float(v)
-                        # 参数范围校验
-                        if k == "ATTACKER_NUM":
-                            v = max(1, min(30, v))
-                        elif k == "MAX_BALLS":
-                            v = max(20, min(200, v))
-                        elif k == "LAUNCH_PER_SECOND":
-                            v = max(1, min(30, v))
-                        elif k == "LASER_COOLDOWN":
-                            v = max(0.05, min(2.0, v))
-                        setattr(cfg, k, v)
+                        elif isinstance(getattr(cfg, k), str):
+                            v = str(v).strip()
+                        else:
+                            continue
+                    except (ValueError, TypeError):
+                        continue
+                    
+                    # 全参数范围校验
+                    param_validators = {
+                        "ATTACKER_NUM": lambda x: max(1, min(50, x)),
+                        "MAX_BALLS": lambda x: max(20, min(200, x)),
+                        "LAUNCH_PROB": lambda x: max(0.0, min(1.0, x)),
+                        "LAUNCH_PER_SECOND": lambda x: max(1, min(50, x)),
+                        "SPEED_BALL": lambda x: max(0.1, min(20.0, x)),
+                        "IR_LOCK_RADIUS": lambda x: max(1, min(90, x)),
+                        "TURRET_SPEED": lambda x: max(0.1, min(30.0, x)),
+                        "LASER_COOLDOWN": lambda x: max(0.01, min(5.0, x)),
+                        "GAN_LR_G": lambda x: max(0.00001, min(0.01, x)),
+                        "GAN_LR_D": lambda x: max(0.00001, min(0.01, x)),
+                        "GAN_TRAIN_FREQ": lambda x: max(1, min(100, x)),
+                        "SIM_SPEED": lambda x: max(0.1, min(10.0, x)),
+                        "BALL_TRAIL": lambda x: max(1, min(100, x)),
+                        "EXPLOSION_FRAMES": lambda x: max(1, min(100, x)),
+                        "HEMI_RADIUS": lambda x: max(50, min(1000, x)),
+                        "VIEW_AZ": lambda x: max(-360.0, min(720.0, x)),
+                        "VIEW_EL": lambda x: max(-90.0, min(90.0, x)),
+                        "DOME_SCALE": lambda x: max(0.1, min(10.0, x)),
+                        "PUSH_FPS": lambda x: max(1, min(120, x))
+                    }
+                    
+                    if k in param_validators:
+                        v = param_validators[k](v)
+                    
+                    setattr(cfg, k, v)
                 elif cmd["action"] == "reset_sim":
                     # 重置模拟所有数据，保留参数设置
                     cfg.SIM_RUNNING = False

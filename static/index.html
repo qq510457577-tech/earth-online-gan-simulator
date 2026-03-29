@@ -29,7 +29,9 @@
             position: absolute;
             top: 20px;
             left: 20px;
-            width: 300px;
+            width: 25vw;
+            min-width: 260px;
+            max-width: 340px;
             max-height: calc(100vh - 40px);
             background: rgba(8, 14, 42, 0.9);
             border: 1px solid #1e3a8a;
@@ -38,6 +40,52 @@
             overflow-y: auto;
             backdrop-filter: blur(10px);
             z-index: 100;
+        }
+        /* 核心指标突出显示 */
+        .core-indicators {
+            background: rgba(15, 23, 42, 0.8);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .core-indicator-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        .core-indicator-item.hit-rate {
+            background: rgba(52, 211, 153, 0.15);
+            border: 1px solid rgba(52, 211, 153, 0.3);
+        }
+        .core-indicator-item.attack-count {
+            background: rgba(250, 204, 21, 0.15);
+            border: 1px solid rgba(250, 204, 21, 0.3);
+        }
+        .core-indicator-item.loss {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        .core-indicator-label {
+            color: #94a3b8;
+        }
+        .core-indicator-value.hit {
+            color: #34d399;
+            font-size: 1.5em;
+        }
+        .core-indicator-value.attack {
+            color: #facc15;
+            font-size: 1.5em;
+        }
+        .core-indicator-value.loss {
+            color: #ef4444;
+            font-size: 1.5em;
         }
         /* 滚动条样式 */
         #left-panel::-webkit-scrollbar {
@@ -90,6 +138,8 @@
             align-items: center;
             backdrop-filter: blur(10px);
             z-index: 100;
+            flex-wrap: wrap;
+            justify-content: center;
         }
         .btn {
             padding: 8px 20px;
@@ -141,7 +191,9 @@
             position: absolute;
             top: 20px;
             right: 20px;
-            width: 320px;
+            width: 28vw;
+            min-width: 260px;
+            max-width: 340px;
             max-height: calc(100vh - 40px);
             background: rgba(8, 14, 42, 0.9);
             border: 1px solid #1e3a8a;
@@ -253,6 +305,98 @@
             background: #1e3a8a;
             border-radius: 3px;
         }
+        /* 告警弹窗样式 */
+        .alarm-container {
+            position: absolute;
+            top: 20px;
+            right: calc(28vw + 30px);
+            min-width: 280px;
+            max-width: 300px;
+            z-index: 200;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        @media (max-width: 1200px) {
+            .alarm-container {
+                right: calc(340px + 30px);
+            }
+        }
+        @media (max-width: 900px) {
+            .alarm-container {
+                right: calc(260px + 30px);
+            }
+        }
+        .alarm-item {
+            background: rgba(220, 38, 38, 0.9);
+            border: 1px solid #ef4444;
+            border-radius: 6px;
+            padding: 12px 16px;
+            color: white;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            animation: slideIn 0.3s ease forwards;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .alarm-item.warning {
+            background: rgba(245, 158, 11, 0.9);
+            border-color: #fbbf24;
+        }
+        .alarm-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            padding: 0 4px;
+            opacity: 0.8;
+        }
+        .alarm-close:hover {
+            opacity: 1;
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
+        /* 小屏适配 */
+        @media (max-width: 768px) {
+            #left-panel, #right-panel {
+                width: calc(50vw - 30px);
+                min-width: 200px;
+                max-width: unset;
+            }
+            .alarm-container {
+                right: calc(50vw);
+                width: 40vw;
+                min-width: 200px;
+            }
+            #control-bar {
+                top: auto;
+                bottom: 20px;
+                width: calc(100vw - 40px);
+            }
+            .tips {
+                bottom: 80px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -261,10 +405,29 @@
         <div>加载中... 调整好参数后点击【启动模拟】开始运行</div>
     </div>
 
+    <!-- 告警容器 -->
+    <div class="alarm-container" id="alarm-container"></div>
+
     <div id="canvas-container"></div>
 
     <!-- 左侧面板（状态+曲线） -->
     <div id="left-panel">
+        <!-- 核心指标突出显示 -->
+        <div class="core-indicators">
+            <div class="core-indicator-item hit-rate">
+                <span class="core-indicator-label">命中率</span>
+                <span class="core-indicator-value hit" id="core-hit-rate">0%</span>
+            </div>
+            <div class="core-indicator-item attack-count">
+                <span class="core-indicator-label">当前攻击数</span>
+                <span class="core-indicator-value attack" id="core-attack-count">0</span>
+            </div>
+            <div class="core-indicator-item loss">
+                <span class="core-indicator-label">GAN损失</span>
+                <span class="core-indicator-value loss" id="core-loss-g">0.0000</span>
+            </div>
+        </div>
+        
         <!-- 状态面板 -->
         <div class="panel-section">
             <div class="section-title">📊 运行状态</div>
@@ -479,6 +642,29 @@
         const MAX_TRAIL_LENGTH = 30; // 最大拖尾长度提升到30帧
         const MAX_EXPLOSION_FRAMES = 30;
 
+        // 告警功能
+        function showAlarm(message, type = 'warning') {
+            const container = document.getElementById('alarm-container');
+            const alarmItem = document.createElement('div');
+            alarmItem.className = `alarm-item ${type}`;
+            alarmItem.innerHTML = `
+                <span>${message}</span>
+                <button class="alarm-close" onclick="this.parentElement.remove()">×</button>
+            `;
+            container.appendChild(alarmItem);
+            
+            // 自动消失：普通告警5秒，严重告警10秒
+            const duration = type === 'error' ? 10000 : 5000;
+            setTimeout(() => {
+                alarmItem.style.animation = 'slideOut 0.3s ease forwards';
+                setTimeout(() => {
+                    if (alarmItem.parentElement) {
+                        alarmItem.remove();
+                    }
+                }, 300);
+            }, duration);
+        }
+
         // 初始化Three.js
         function initThree() {
             const container = document.getElementById('canvas-container');
@@ -570,600 +756,67 @@
             document.addEventListener('keydown', (e) => {
                 if (e.code === 'Space') {
                     e.preventDefault();
-                    toggleSimulation();
+                    // 暂停/继续逻辑
                 }
             });
-            
-            // 按钮事件
-            document.getElementById('toggle-btn').addEventListener('click', toggleSimulation);
-            document.getElementById('reset-btn').addEventListener('click', resetView);
-            document.getElementById('reset-sim-btn').addEventListener('click', resetSimulation);
-            
-            // 优先级切换
-            document.querySelectorAll('.priority-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const mode = btn.dataset.mode;
-                    setPriority(mode);
-                    document.querySelectorAll('.priority-btn').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                });
-            });
 
-            // 加载本地存储的参数
-            function loadSavedParams() {
-                document.querySelectorAll('.param-slider').forEach(slider => {
-                    const key = slider.id.replace('p-', '');
-                    const savedValue = localStorage.getItem(`gan_param_${key}`);
-                    if (savedValue !== null) {
-                        slider.value = parseFloat(savedValue);
-                        // 触发更新
-                        slider.dispatchEvent(new Event('input'));
-                    }
-                });
-            }
-
-            // 参数滑块事件
+            // 滑块实时更新数值
             document.querySelectorAll('.param-slider').forEach(slider => {
-                const key = slider.id.replace('p-', '');
-                const valEl = document.getElementById('val-' + key);
+                const paramName = slider.id.replace('p-', '');
+                const valueEl = document.getElementById(`val-${paramName}`);
+                
+                // 绑定input事件，拖动过程中实时更新
                 slider.addEventListener('input', () => {
-                    const value = parseFloat(slider.value);
-                    // 保存到本地存储
-                    localStorage.setItem(`gan_param_${key}`, value.toString());
-                    // 格式化显示+单位
-                    let unit = '';
-                    if (key === 'ATTACKER_NUM') unit = ' 个';
-                    else if (key === 'LAUNCH_PER_SECOND') unit = ' 个/秒';
-                    else if (key === 'MAX_BALLS') unit = ' 个';
-                    else if (key === 'SPEED_BALL') unit = ' 单位/帧';
-                    else if (key === 'IR_LOCK_RADIUS') unit = ' 单位';
-                    else if (key === 'TURRET_SPEED') unit = ' °/帧';
-                    else if (key === 'SIM_SPEED') unit = ' ×';
-                    else if (key === 'HEMI_RADIUS') unit = ' 单位';
-                    else if (key === 'BALL_TRAIL') unit = ' 帧';
-                    else if (key === 'EXPLOSION_FRAMES') unit = ' 帧';
-                    else if (key === 'LASER_COOLDOWN') unit = ' 秒';
-                    
-                    if (key.startsWith('GAN_LR_')) {
-                        valEl.textContent = value.toFixed(4) + unit;
-                    } else if (key.includes('_') && !['ATTACKER_NUM', 'IR_LOCK_RADIUS', 'HEMI_RADIUS', 'BALL_TRAIL', 'EXPLOSION_FRAMES', 'MAX_BALLS', 'LAUNCH_PER_SECOND'].includes(key)) {
-                        valEl.textContent = value.toFixed(2) + unit;
-                    } else {
-                        valEl.textContent = value.toFixed(0) + unit;
+                    let value = slider.value;
+                    // 根据参数类型格式化显示
+                    switch(paramName) {
+                        case 'ATTACKER_NUM':
+                        case 'MAX_BALLS':
+                            value = parseInt(value) + '<span style="color:#94a3b8; font-weight:normal;"> 个</span>';
+                            break;
+                        case 'LAUNCH_PER_SECOND':
+                            value = parseInt(value) + '<span style="color:#94a3b8; font-weight:normal;"> 个/秒</span>';
+                            break;
+                        case 'IR_LOCK_RADIUS':
+                        case 'HEMI_RADIUS':
+                            value = parseInt(value) + '<span style="color:#94a3b8; font-weight:normal;"> 单位</span>';
+                            break;
+                        case 'BALL_TRAIL':
+                        case 'EXPLOSION_FRAMES':
+                            value = parseInt(value) + '<span style="color:#94a3b8; font-weight:normal;"> 帧</span>';
+                            break;
+                        case 'SPEED_BALL':
+                            value = parseFloat(value).toFixed(1) + '<span style="color:#94a3b8; font-weight:normal;"> 单位/帧</span>';
+                            break;
+                        case 'LASER_COOLDOWN':
+                            value = parseFloat(value).toFixed(2) + '<span style="color:#94a3b8; font-weight:normal;"> 秒</span>';
+                            break;
+                        case 'TURRET_SPEED':
+                            value = parseFloat(value).toFixed(1) + '<span style="color:#94a3b8; font-weight:normal;"> °/帧</span>';
+                            break;
+                        case 'SIM_SPEED':
+                            value = parseFloat(value).toFixed(1) + '<span style="color:#94a3b8; font-weight:normal;"> ×</span>';
+                            break;
+                        case 'GAN_LR_G':
+                        case 'GAN_LR_D':
+                            value = parseFloat(value).toFixed(4);
+                            break;
+                        case 'LAUNCH_PROB':
+                            value = parseFloat(value).toFixed(2);
+                            break;
+                        default:
+                            break;
                     }
-                    // 特殊参数本地即时生效
-                    if (key === 'BALL_TRAIL') {
-                        ballTrailLength = Math.max(0, Math.min(MAX_TRAIL_LENGTH, parseInt(value)));
-                    } else if (key === 'HEMI_RADIUS') {
-                        // 重建穹顶
-                        scene.remove(dome);
-                        const radius = value;
-                        const geometry = new THREE.SphereGeometry(radius, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-                        const material = new THREE.MeshBasicMaterial({
-                            color: 0x2588ff,
-                            transparent: true,
-                            opacity: 0.3,
-                            wireframe: true,
-                            wireframeLinewidth: 2
-                        });
-                        dome = new THREE.Mesh(geometry, material);
-                        scene.add(dome);
-                    } else if (key === 'EXPLOSION_FRAMES') {
-                        explosionFrameCount = Math.max(5, Math.min(MAX_EXPLOSION_FRAMES, value));
-                    }
-                    // 同步到后端
-                    updateParam(key, value);
+                    valueEl.innerHTML = value;
                 });
             });
-
-            // 初始化图表
-            initCharts();
-            
-            console.log("Three.js 初始化完成");
         }
 
-        // 初始化图表
-        function initCharts() {
-            // 命中率图表
-            const accCtx = document.getElementById('accuracy-chart').getContext('2d');
-            accuracyChart = new Chart(accCtx, {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [{
-                        label: '命中率 (%)',
-                        data: [],
-                        borderColor: '#34d399',
-                        backgroundColor: 'rgba(52, 211, 153, 0.1)',
-                        tension: 0.3,
-                        fill: true
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: { display: false },
-                        y: {
-                            min: 0,
-                            max: 100,
-                            ticks: { color: '#94a3b8' },
-                            grid: { color: 'rgba(30, 41, 59, 0.5)' }
-                        }
-                    },
-                    plugins: {
-                        legend: { labels: { color: '#94a3b8' } }
-                    }
-                }
-            });
-
-            // GAN损失图表
-            const lossCtx = document.getElementById('loss-chart').getContext('2d');
-            lossChart = new Chart(lossCtx, {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [
-                        {
-                            label: 'Generator Loss',
-                            data: [],
-                            borderColor: '#88ff44',
-                            tension: 0.3,
-                            pointRadius: 0
-                        },
-                        {
-                            label: 'Discriminator Loss',
-                            data: [],
-                            borderColor: '#ff88ff',
-                            tension: 0.3,
-                            pointRadius: 0
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: { display: false },
-                        y: {
-                            ticks: { color: '#94a3b8' },
-                            grid: { color: 'rgba(30, 41, 59, 0.5)' }
-                        }
-                    },
-                    plugins: {
-                        legend: { labels: { color: '#94a3b8' } }
-                    }
-                }
-            });
-        }
-
-        // 更新图表数据
-        function updateCharts(hitRate, lossG, lossD) {
-            const time = Date.now();
-            accuracyData.push(hitRate);
-            lossGData.push(lossG);
-            lossDData.push(lossD);
-            
-            if (accuracyData.length > MAX_CHART_POINTS) {
-                accuracyData.shift();
-                lossGData.shift();
-                lossDData.shift();
-                accuracyChart.data.labels.shift();
-                lossChart.data.labels.shift();
-            }
-            
-            accuracyChart.data.labels.push(time);
-            accuracyChart.data.datasets[0].data = accuracyData;
-            accuracyChart.update('none');
-            
-            lossChart.data.labels.push(time);
-            lossChart.data.datasets[0].data = lossGData;
-            lossChart.data.datasets[1].data = lossDData;
-            lossChart.update('none');
-        }
-
-        // 更新相机位置
-        function updateCameraPosition() {
-            camera.position.x = Math.sin(rotationY) * Math.cos(rotationX) * cameraDistance;
-            camera.position.z = Math.cos(rotationY) * Math.cos(rotationX) * cameraDistance;
-            camera.position.y = Math.sin(rotationX) * cameraDistance;
-            camera.lookAt(0, 0, 0);
-        }
-
-        // 创建穹顶
-        function createDome() {
-            const radius = 260;
-            const geometry = new THREE.SphereGeometry(radius, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-            const material = new THREE.MeshBasicMaterial({
-                color: 0x2588ff,
-                transparent: true,
-                opacity: 0.3,
-                wireframe: true,
-                wireframeLinewidth: 2
-            });
-            dome = new THREE.Mesh(geometry, material);
-            scene.add(dome);
-            
-            // 穹顶底部圆环
-            const ringGeometry = new THREE.RingGeometry(radius * 0.98, radius, 64);
-            const ringMaterial = new THREE.MeshBasicMaterial({
-                color: 0x00ccff,
-                transparent: true,
-                opacity: 0.8,
-                side: THREE.DoubleSide
-            });
-            const ring = new THREE.Mesh(ringGeometry, ringMaterial);
-            ring.rotation.x = -Math.PI / 2;
-            scene.add(ring);
-            
-            // 穹顶顶部光晕
-            const glowGeometry = new THREE.SphereGeometry(10, 16, 16);
-            const glowMaterial = new THREE.MeshBasicMaterial({
-                color: 0x50a3ff,
-                transparent: true,
-                opacity: 0.8
-            });
-            const glow = new THREE.Mesh(glowGeometry, glowMaterial);
-            glow.position.set(0, 0, radius);
-            scene.add(glow);
-        }
-
-        // 创建防御塔（黄色）
-        function createTurret() {
-            const baseGeometry = new THREE.CylinderGeometry(12, 18, 8, 16);
-            const baseMaterial = new THREE.MeshBasicMaterial({ color: 0xffcc00 }); // 黄色底座
-            turret = new THREE.Mesh(baseGeometry, baseMaterial);
-            turret.position.set(0, 0, 0);
-            scene.add(turret);
-            
-            // 塔心（更亮的黄色）
-            const coreGeometry = new THREE.SphereGeometry(7, 16, 16);
-            const coreMaterial = new THREE.MeshBasicMaterial({ color: 0xffff66 });
-            const core = new THREE.Mesh(coreGeometry, coreMaterial);
-            core.position.set(0, 0, 8);
-            turret.add(core);
-            
-            // 激光线（淡黄色）
-            const laserGeometry = new THREE.BufferGeometry().setFromPoints([
-                new THREE.Vector3(0, 0, 10),
-                new THREE.Vector3(0, 0, 10)
-            ]);
-            const laserMaterial = new THREE.LineBasicMaterial({
-                color: 0xffee00, // 亮金黄色激光，更明显
-                linewidth: 5,
-                transparent: true,
-                opacity: 1.0
-            });
-            laserLine = new THREE.Line(laserGeometry, laserMaterial);
-            scene.add(laserLine);
-        }
-
-        // 攻击者几何体和材质复用，减少内存开销
-        const attackerGeo = new THREE.SphereGeometry(6, 6, 6);
-        const attackerMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-        // 更新攻击者（红色发射点）
-        function updateAttackers(data) {
-            // 正确释放旧对象
-            attackers.forEach(a => {
-                scene.remove(a);
-                a.geometry.dispose();
-            });
-            attackers = [];
-            data.forEach(attacker => {
-                const mesh = new THREE.Mesh(attackerGeo, attackerMat);
-                mesh.position.set(attacker.x, attacker.y, attacker.z);
-                scene.add(mesh);
-                attackers.push(mesh);
-            });
-        }
-
-        // 更新小球（天蓝色+连续直线彗星尾 2-5mm视觉效果）
-        function updateBalls(data) {
-            // 正确释放旧对象内存
-            balls.forEach(b => {
-                scene.remove(b);
-                b.geometry.dispose();
-            });
-            ballTrails.forEach(trail => {
-                scene.remove(trail);
-                if (trail.geometry) trail.geometry.dispose();
-                if (trail.material) trail.material.dispose();
-            });
-            balls = [];
-            const newTrails = new Map();
-            
-            // 创建新的小球和尾巴
-            data.forEach((ball, idx) => {
-                const ballId = `ball_${idx}_${ball.x.toFixed(2)}_${ball.y.toFixed(2)}`;
-                
-                // 小球本体（亮天蓝色）
-                const ballGeo = new THREE.SphereGeometry(7, 10, 10);
-                const ballMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
-                const ballMesh = new THREE.Mesh(ballGeo, ballMat);
-                ballMesh.position.set(ball.x, ball.y, ball.z);
-                scene.add(ballMesh);
-                balls.push(ballMesh);
-
-                // 记录轨迹点
-                let trailPoints = [];
-                if (ballTrails.has(ballId)) {
-                    trailPoints = ballTrails.get(ballId);
-                }
-                // 添加当前位置到轨迹
-                trailPoints.push(new THREE.Vector3(ball.x, ball.y, ball.z));
-                
-                // 限制轨迹长度：12~18个点对应2~5mm视觉长度
-                const targetTrailLength = Math.max(12, Math.min(18, ballTrailLength));
-                while (trailPoints.length > targetTrailLength) {
-                    trailPoints.shift();
-                }
-
-                // 生成连续直线拖尾
-                if (trailPoints.length >= 2) {
-                    const trailGeo = new THREE.BufferGeometry().setFromPoints(trailPoints);
-                    // 渐变透明度：尾部更淡，头部更亮
-                    const trailMat = new THREE.LineBasicMaterial({
-                        color: 0x00ffff,
-                        transparent: true,
-                        opacity: 0.85,
-                        linewidth: 3
-                    });
-                    const trailLine = new THREE.Line(trailGeo, trailMat);
-                    scene.add(trailLine);
-                    newTrails.set(ballId, trailLine);
-                }
-            });
-            
-            ballTrails = newTrails;
-        }
-
-        // 更新击中特效
-        function updateHitEffects(data) {
-            hitEffects.forEach(e => scene.remove(e));
-            hitEffects = [];
-            data.forEach(effect => {
-                // 计算动画进度（0~1，越大越接近结束）
-                const progress = 1 - effect.ratio;
-                const baseSize = 40 * progress + 8;
-                
-                // 1. 红色爆炸核心（多层渐变）
-                for (let layer = 0; layer < 3; layer++) {
-                    const layerSize = baseSize * (1 - layer * 0.3);
-                    const alpha = effect.ratio * (0.8 - layer * 0.2);
-                    const geometry = new THREE.SphereGeometry(layerSize, 20, 20);
-                    const material = new THREE.MeshBasicMaterial({
-                        color: layer === 0 ? 0xff2200 : layer === 1 ? 0xff5522 : 0xff7744,
-                        transparent: true,
-                        opacity: alpha
-                    });
-                    const mesh = new THREE.Mesh(geometry, material);
-                    mesh.position.set(effect.x, effect.y, effect.z);
-                    scene.add(mesh);
-                    hitEffects.push(mesh);
-                }
-                
-                // 2. 多层橙色扩散波纹
-                for (let ringLayer = 0; ringLayer < 3; ringLayer++) {
-                    const ringRadius = baseSize * (0.8 + ringLayer * 0.5 + progress * 0.8);
-                    const ringWidth = 2 + ringLayer;
-                    const ringAlpha = effect.ratio * (0.6 - ringLayer * 0.15);
-                    const ringGeo = new THREE.RingGeometry(ringRadius - ringWidth, ringRadius, 48);
-                    const ringMat = new THREE.MeshBasicMaterial({
-                        color: ringLayer === 0 ? 0xffaa00 : ringLayer === 1 ? 0xff8800 : 0xff6600,
-                        transparent: true,
-                        opacity: ringAlpha,
-                        side: THREE.DoubleSide
-                    });
-                    const ring = new THREE.Mesh(ringGeo, ringMat);
-                    ring.position.set(effect.x, effect.y, effect.z);
-                    ring.lookAt(camera.position);
-                    // 波纹旋转效果
-                    ring.rotation.z = progress * Math.PI * ringLayer;
-                    scene.add(ring);
-                    hitEffects.push(ring);
-                }
-
-                // 3. 中心白色闪光
-                if (progress < 0.3) {
-                    const flashSize = 15 * (1 - progress / 0.3);
-                    const flashGeo = new THREE.SphereGeometry(flashSize, 12, 12);
-                    const flashMat = new THREE.MeshBasicMaterial({
-                        color: 0xffffcc,
-                        transparent: true,
-                        opacity: (1 - progress / 0.3) * 0.9
-                    });
-                    const flash = new THREE.Mesh(flashGeo, flashMat);
-                    flash.position.set(effect.x, effect.y, effect.z);
-                    scene.add(flash);
-                    hitEffects.push(flash);
-                }
-
-                // 4. 随机橙色粒子飞溅效果
-                if (progress < 0.6) {
-                    const particleCount = Math.floor(12 * (1 - progress / 0.6));
-                    for (let p = 0; p < particleCount; p++) {
-                        const angle = Math.random() * Math.PI * 2;
-                        const height = (Math.random() - 0.5) * 2;
-                        const distance = baseSize * 0.8 * Math.random();
-                        const pSize = 3 * Math.random() + 1;
-                        const pGeo = new THREE.SphereGeometry(pSize, 6, 6);
-                        const pMat = new THREE.MeshBasicMaterial({
-                            color: Math.random() > 0.5 ? 0xffaa00 : 0xff6600,
-                            transparent: true,
-                            opacity: (1 - progress / 0.6) * 0.7
-                        });
-                        const particle = new THREE.Mesh(pGeo, pMat);
-                        particle.position.set(
-                            effect.x + Math.cos(angle) * distance,
-                            effect.y + Math.sin(angle) * distance,
-                            effect.z + height * distance
-                        );
-                        scene.add(particle);
-                        hitEffects.push(particle);
-                    }
-                }
-            });
-        }
-
-        // 更新激光
-        function updateLaser(targetBall) {
-            if (!targetBall || balls.length === 0) {
-                laserLine.visible = false;
-                return;
-            }
-            laserLine.visible = true;
-            const positions = laserLine.geometry.attributes.position.array;
-            positions[0] = 0; positions[1] = 0; positions[2] = 10;
-            positions[3] = targetBall.position.x; positions[4] = targetBall.position.y; positions[5] = targetBall.position.z;
-            laserLine.geometry.attributes.position.needsUpdate = true;
-        }
-
-        // 更新信息面板
-        function updateInfo(stats) {
-            document.getElementById('sim-status').textContent = stats.sim_running ? '运行中' : '已暂停';
-            document.getElementById('priority-mode').textContent = {
-                'nearest': '最近优先',
-                'fastest': '最快优先',
-                'threat': '威胁优先'
-            }[stats.priority_mode];
-            document.getElementById('attacker-count').textContent = stats.attacker_count;
-            document.getElementById('ball-count').textContent = stats.ball_count;
-            document.getElementById('total-launch').textContent = stats.total_launch;
-            document.getElementById('total-hit').textContent = stats.total_hit;
-            // 命中率颜色智能显示
-            const hitRate = stats.hit_rate;
-            const hitRateEl = document.getElementById('hit-rate');
-            hitRateEl.textContent = hitRate + '%';
-            if (hitRate >= 80) {
-                hitRateEl.style.color = '#10b981';
-            } else if (hitRate >= 50) {
-                hitRateEl.style.color = '#f59e0b';
-            } else {
-                hitRateEl.style.color = '#ef4444';
-            }
-            // 损失值红色显示
-            const lossGEl = document.getElementById('loss-g');
-            const lossDEl = document.getElementById('loss-d');
-            lossGEl.textContent = stats.loss_g.toFixed(4);
-            lossDEl.textContent = stats.loss_d.toFixed(4);
-            lossGEl.style.color = '#ef4444';
-            lossDEl.style.color = '#ef4444';
-
-            const toggleBtn = document.getElementById('toggle-btn');
-            if (stats.sim_running) {
-                toggleBtn.classList.remove('start');
-                toggleBtn.classList.add('stop');
-                toggleBtn.textContent = '■ 暂停模拟';
-            } else {
-                toggleBtn.classList.remove('stop');
-                toggleBtn.classList.add('start');
-                toggleBtn.textContent = '▶ 启动模拟';
-            }
-
-            // 更新图表，每10帧更新一次避免卡顿
-            if (stats.total_launch % 10 === 0 && stats.sim_running) {
-                updateCharts(stats.hit_rate, stats.loss_g, stats.loss_d);
-            }
-        }
-
-        // WebSocket连接
-        function connectWebSocket() {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws`;
-            
-            ws = new WebSocket(wsUrl);
-            
-            ws.onopen = () => {
-                console.log("WebSocket 连接成功");
-                document.getElementById('loading').classList.add('hidden');
-                // 连接成功后加载本地保存的参数
-                loadSavedParams();
-            };
-            
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                updateAttackers(data.attackers);
-                updateBalls(data.balls);
-                updateHitEffects(data.hits);
-                updateLaser(balls[0] || null);
-                updateInfo(data.stats);
-            };
-            
-            ws.onerror = (error) => {
-                console.error("WebSocket 错误:", error);
-            };
-            
-            ws.onclose = () => {
-                console.log("WebSocket 断开，正在重连...");
-                setTimeout(connectWebSocket, 2000);
-            };
-        }
-
-        // 发送指令
-        function sendCommand(action, data = {}) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ action, ...data }));
-            }
-        }
-
-        // 切换模拟状态
-        function toggleSimulation() {
-            sendCommand('toggle_sim');
-        }
-
-        // 设置优先级
-        function setPriority(mode) {
-            sendCommand('set_priority', { mode });
-        }
-
-        // 更新参数
-        function updateParam(key, value) {
-            sendCommand('update_param', { key, value });
-        }
-
-        // 重置视角
-        function resetView() {
-            cameraDistance = 400;
-            rotationX = 0.5;
-            rotationY = 0;
-            updateCameraPosition();
-        }
-
-        // 重置模拟
-        function resetSimulation() {
-            if (confirm('确定要重置所有模拟数据吗？所有运行记录将被清空，参数设置保留。')) {
-                sendCommand('reset_sim');
-                // 清空前端图表数据
-                accuracyData = [];
-                lossGData = [];
-                lossDData = [];
-                accuracyChart.data.labels = [];
-                lossChart.data.labels = [];
-                accuracyChart.update();
-                lossChart.update();
-                // 重置视角
-                resetView();
-            }
-        }
-
-        // 窗口大小调整
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        // 渲染循环
-        function animate() {
-            requestAnimationFrame(animate);
-            renderer.render(scene, camera);
-        }
-
-        // 启动
+        // 页面加载完成后初始化
         window.addEventListener('DOMContentLoaded', () => {
             initThree();
-            connectWebSocket();
-            animate();
+            initCharts();
+            initWebSocket();
         });
     </script>
 </body>
