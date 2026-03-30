@@ -620,8 +620,8 @@
     </div>
 
     <!-- 引入CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <script src="three.min.js"></script>
+    <script src="chart.umd.min.js"></script>
 
     <script>
         let scene, camera, renderer;
@@ -641,6 +641,97 @@
         const MAX_CHART_POINTS = 50;
         const MAX_TRAIL_LENGTH = 30; // 最大拖尾长度提升到30帧
         const MAX_EXPLOSION_FRAMES = 30;
+
+        // 初始化图表
+        function initCharts() {
+            const accuracyCtx = document.getElementById('accuracy-chart').getContext('2d');
+            const lossCtx = document.getElementById('loss-chart').getContext('2d');
+
+            accuracyChart = new Chart(accuracyCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: '命中率',
+                        data: [],
+                        borderColor: '#34d399',
+                        backgroundColor: 'rgba(52, 211, 153, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            labels: { color: '#94a3b8' }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#64748b' },
+                            grid: { color: 'rgba(30, 58, 138, 0.3)' }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: { color: '#64748b' },
+                            grid: { color: 'rgba(30, 58, 138, 0.3)' }
+                        }
+                    },
+                    animation: { duration: 0 }
+                }
+            });
+
+            lossChart = new Chart(lossCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'G 损失',
+                            data: [],
+                            borderColor: '#facc15',
+                            backgroundColor: 'rgba(250, 204, 21, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        },
+                        {
+                            label: 'D 损失',
+                            data: [],
+                            borderColor: '#ef4444',
+                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            labels: { color: '#94a3b8' }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#64748b' },
+                            grid: { color: 'rgba(30, 58, 138, 0.3)' }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            ticks: { color: '#64748b' },
+                            grid: { color: 'rgba(30, 58, 138, 0.3)' }
+                        }
+                    },
+                    animation: { duration: 0 }
+                }
+            });
+        }
 
         // 告警功能
         function showAlarm(message, type = 'warning') {
